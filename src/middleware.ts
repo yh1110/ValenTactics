@@ -34,10 +34,12 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     pathname === "/" ||
     pathname === "/login" ||
-    pathname.startsWith("/auth/") ||
-    pathname.startsWith("/api/");
+    pathname.startsWith("/auth/");
 
   if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "未認証" }, { status: 401 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

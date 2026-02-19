@@ -56,7 +56,7 @@ export async function PUT(
   await prisma.analysisResult.deleteMany({ where: { targetId: id } });
 
   const target = await prisma.target.update({
-    where: { id },
+    where: { id, userId: user.id },
     data: {
       name: data.name,
       gender: data.gender,
@@ -102,6 +102,6 @@ export async function DELETE(
     return NextResponse.json({ error: "見つかりません" }, { status: 404 });
   }
 
-  await prisma.target.delete({ where: { id } });
+  await prisma.target.delete({ where: { id, userId: user.id } });
   return NextResponse.json({ ok: true });
 }
