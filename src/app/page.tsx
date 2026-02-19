@@ -6,30 +6,23 @@ import {
   MessageSquareHeart,
   ArrowRight,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 const features = [
   {
     icon: BarChart3,
-    title: "優先度スコアリング",
-    description: "関係性・過去の実績からS/A/B/Cランクを自動算出",
+    title: "3軸スコアリング",
+    description: "ROI × 関係性 × 感情の加重平均でS/A/B/Cランクを自動算出",
   },
   {
     icon: Gift,
     title: "ギフト最適化",
-    description: "好み × 予算 × 関係性でベストなギフトを提案",
+    description: "好み × 予算 × 関係性でベストなギフトを個別提案",
   },
   {
     icon: MessageSquareHeart,
@@ -38,38 +31,41 @@ const features = [
   },
   {
     icon: Sparkles,
-    title: "ROI予測",
-    description: "ホワイトデーの回収確率と期待倍率を分析",
+    title: "成功タイプ判定",
+    description: "投資型・感情型・関係構築型など6タイプに自動分類",
   },
 ];
 
-const comparisonData = [
-  ["金銭的リターン（ホワイトデー回収）", "受注・売上・アップセル", "ROI予測"],
-  ["関係性リターン（信頼構築）", "紹介獲得・長期パートナーシップ", "リレーションシップバリュー"],
-  ["感情的重要度（気持ち重視）", "戦略的アカウント（赤字でも維持）", "ポートフォリオ戦略"],
-  ["損切り推奨", "ロスカット判定", "リソース最適化"],
-  ["2年連続お返しなし → 撤退", "2Q連続未反応リード → ナーチャリング停止", "離脱判定ルール"],
-  ["感情スコアによる予算補正", "戦略アカウントへの赤字投資許容", "定性判断の定量化"],
+const steps = [
+  { num: "1", title: "基本情報", desc: "名前・関係性・性別・年代を入力" },
+  { num: "2", title: "関係性・感情", desc: "目標・重要度・義理認識を設定" },
+  { num: "3", title: "過去の実績", desc: "お返し履歴と推定金額を記録" },
+  { num: "4", title: "好み・予算", desc: "好みタグと個人予算を設定" },
 ];
 
 export default function Home() {
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <Heart className="h-6 w-6 text-primary fill-primary" />
-            <span className="font-bold text-lg tracking-tight">
-              ValenTactics
-            </span>
+            <span className="font-bold text-lg tracking-tight">ValenTactics</span>
           </div>
-          <Button asChild>
-            <Link href="/strategy/new">
-              戦略を立てる
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="flex gap-3">
+            <Button variant="outline" asChild>
+              <Link href="/targets">
+                <Users className="h-4 w-4" />
+                一覧を見る
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/targets/new">
+                対象者を登録
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -91,26 +87,26 @@ export default function Home() {
             <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl">
               バレンタインを
               <br />
-              <span className="text-primary">戦略的</span>に攻略する
+              <span className="text-primary">一人ずつ</span>戦略的に
             </h1>
 
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-relaxed">
-              「誰に・何を・どう渡すか」をAIが最適化。
+              対象者ごとにステップ形式で情報を入力し、AIが個別分析。
               <br />
-              対象者リストと予算を入力するだけで、ランク付け・予算配分・
-              ギフト提案・メッセージ生成・ROI予測を一括分析します。
+              3軸スコアリングでランク判定・ギフト提案・メッセージ生成・成功タイプ分類を一括実行します。
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25" asChild>
-                <Link href="/strategy/new">
+                <Link href="/targets/new">
                   <Sparkles className="h-5 w-5" />
-                  今すぐ戦略を立てる
+                  対象者を登録する
                 </Link>
               </Button>
               <Button variant="outline" size="lg" className="h-12 px-8 text-base" asChild>
-                <Link href="/strategy/new?demo=true">
-                  デモデータで試す
+                <Link href="/targets">
+                  <Users className="h-5 w-5" />
+                  一覧を見る
                 </Link>
               </Button>
             </div>
@@ -119,30 +115,22 @@ export default function Home() {
 
         <Separator />
 
-        {/* Features */}
+        {/* Steps */}
         <section className="bg-card py-20">
           <div className="mx-auto max-w-6xl px-6">
-            <h2 className="text-center text-2xl font-bold mb-2">主要機能</h2>
+            <h2 className="text-center text-2xl font-bold mb-2">ステップ形式で簡単登録</h2>
             <p className="text-center text-muted-foreground mb-12">
-              AIがバレンタイン戦略の全工程を最適化します
+              4ステップで入力完了。最後にAIが自動分析します
             </p>
-
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {features.map((f) => (
-                <Card
-                  key={f.title}
-                  className="group hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all"
-                >
-                  <CardHeader className="pb-2">
-                    <div className="mb-2 inline-flex rounded-xl bg-secondary p-3 w-fit">
-                      <f.icon className="h-6 w-6 text-primary" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {steps.map((s) => (
+                <Card key={s.num} className="text-center">
+                  <CardContent className="pt-6">
+                    <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary text-primary-foreground font-bold text-lg mb-3">
+                      {s.num}
                     </div>
-                    <CardTitle className="text-base">{f.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {f.description}
-                    </p>
+                    <p className="font-semibold mb-1">{s.title}</p>
+                    <p className="text-sm text-muted-foreground">{s.desc}</p>
                   </CardContent>
                 </Card>
               ))}
@@ -152,48 +140,32 @@ export default function Home() {
 
         <Separator />
 
-        {/* Sales Comparison */}
+        {/* Features */}
         <section className="py-20">
-          <div className="mx-auto max-w-4xl px-6">
-            <h2 className="text-center text-2xl font-bold mb-2">
-              セールス応用対比
-            </h2>
-            <p className="text-center text-muted-foreground mb-10">
-              バレンタイン戦略のロジックはそのままセールスに応用可能
+          <div className="mx-auto max-w-6xl px-6">
+            <h2 className="text-center text-2xl font-bold mb-2">AI分析機能</h2>
+            <p className="text-center text-muted-foreground mb-12">
+              一人ひとりに最適な戦略を自動生成
             </p>
-            <Card>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="font-semibold">
-                      バレンタイン機能
-                    </TableHead>
-                    <TableHead className="font-semibold">
-                      セールス応用
-                    </TableHead>
-                    <TableHead className="font-semibold">
-                      共通ロジック
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {comparisonData.map(([v, s, c]) => (
-                    <TableRow key={v}>
-                      <TableCell>{v}</TableCell>
-                      <TableCell>{s}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{c}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {features.map((f) => (
+                <Card key={f.title} className="group hover:border-primary/30 hover:shadow-lg transition-all">
+                  <CardHeader className="pb-2">
+                    <div className="mb-2 inline-flex rounded-xl bg-secondary p-3 w-fit">
+                      <f.icon className="h-6 w-6 text-primary" />
+                    </div>
+                    <CardTitle className="text-base">{f.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         </section>
       </main>
 
-      {/* Footer */}
       <Separator />
       <footer className="bg-card py-8">
         <div className="mx-auto max-w-6xl px-6 text-center text-sm text-muted-foreground">

@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Target {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Step 1: 基本情報 + 目的
+  name         String
+  gender       String @default("未回答")
+  ageGroup     String @default("30代")
+  relationship String
+  benefitType  String @default("無形")
+
+  // Step 2: 相手を知る
+  personality     String[] @default([])
+  preferences     String[] @default([])
+  recentInterests String   @default("")
+  giftReaction    String   @default("不明")
+
+  // Step 3: 関係性 & 過去データ
+  relationshipGoal  String @default("現状維持")
+  emotionalPriority Int    @default(3)
+  giriAwareness     String @default("不明")
+  returnTendency    String @default("不明")
+
+  gaveLastYear             Boolean @default(false)
+  receivedReturn           Boolean @default(false)
+  returnValue              Int?
+  gaveYearBefore           Boolean @default(false)
+  receivedReturnYearBefore Boolean @default(false)
+
+  // Step 4: 予算 & メモ
+  memo   String @default("")
+  budget Int    @default(1000)
+
+  analysis AnalysisResult?
+}
+
+model AnalysisResult {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  targetId String @unique
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  scoreIntimacy Int
+  scoreRoi      Int
+  scoreAffinity Int
+  scoreTotal    Int
+
+  rank       String
+  rankReason String
+
+  giftItem   String
+  giftPrice  Int
+  giftReason String
+  giftStory  String @default("")
+
+  message String
+
+  returnProbability  Float
+  expectedMultiplier Float
+
+  questions String[] @default([])
+
+  allocatedBudget Int
+}
