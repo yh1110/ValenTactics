@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { targetFormSchema } from "@/lib/schema";
+import { getUser } from "@/lib/supabase/server";
 
 export async function GET() {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const targets = await prisma.target.findMany({
+    where: { userId: user.id },
     include: { analysis: true },
     orderBy: { createdAt: "desc" },
   });
@@ -11,6 +18,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const body = await request.json();
   const parsed = targetFormSchema.safeParse(body);
 
@@ -24,6 +36,7 @@ export async function POST(request: Request) {
   const data = parsed.data;
   const target = await prisma.target.create({
     data: {
+      userId: user.id,
       name: data.name,
       gender: data.gender,
       ageGroup: data.ageGroup,

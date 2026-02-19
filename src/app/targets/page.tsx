@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { UserMenu } from "@/components/user-menu";
 
 import type { Rank, BenefitType } from "@/lib/types";
 import { RANK_CONFIG, BENEFIT_TYPES } from "@/lib/types";
@@ -68,12 +69,15 @@ export default function TargetsListPage() {
             <Heart className="h-5 w-5 text-primary fill-primary" />
             <span className="font-bold tracking-tight">ValenTactics</span>
           </div>
-          <Button asChild>
-            <Link href="/targets/new">
-              <Plus className="h-4 w-4" />
-              新規登録
-            </Link>
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button asChild>
+              <Link href="/targets/new">
+                <Plus className="h-4 w-4" />
+                新規登録
+              </Link>
+            </Button>
+            <UserMenu />
+          </div>
         </div>
       </header>
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { UserMenu } from "@/components/user-menu";
 
 const features = [
   {
@@ -52,7 +53,7 @@ export default function Home() {
             <Heart className="h-6 w-6 text-primary fill-primary" />
             <span className="font-bold text-lg tracking-tight">ValenTactics</span>
           </div>
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button variant="outline" asChild>
               <Link href="/targets">
                 <Users className="h-4 w-4" />
@@ -65,6 +66,7 @@ export default function Home() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
+            <UserMenu />
           </div>
         </div>
       </header>

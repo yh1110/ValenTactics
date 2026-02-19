@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUser } from "@/lib/supabase/server";
 import { analyzeTarget } from "@/lib/analysis";
 import type {
   BenefitType,
@@ -16,8 +17,15 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const { id } = await params;
-  const target = await prisma.target.findUnique({ where: { id } });
+  const target = await prisma.target.findUnique({
+    where: { id, userId: user.id },
+  });
 
   if (!target) {
     return NextResponse.json({ error: "見つかりません" }, { status: 404 });

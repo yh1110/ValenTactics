@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { targetFormSchema } from "@/lib/schema";
+import { getUser } from "@/lib/supabase/server";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const { id } = await params;
   const target = await prisma.target.findUnique({
-    where: { id },
+    where: { id, userId: user.id },
     include: { analysis: true },
   });
 
@@ -22,6 +28,11 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const { id } = await params;
   const body = await request.json();
   const parsed = targetFormSchema.safeParse(body);
@@ -33,9 +44,15 @@ export async function PUT(
     );
   }
 
+  const existing = await prisma.target.findUnique({
+    where: { id, userId: user.id },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "見つかりません" }, { status: 404 });
+  }
+
   const data = parsed.data;
 
-  // 既存の分析結果を削除（再分析のため）
   await prisma.analysisResult.deleteMany({ where: { targetId: id } });
 
   const target = await prisma.target.update({
@@ -72,7 +89,19 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getUser();
+  if (!user) {
+    return NextResponse.json({ error: "未認証" }, { status: 401 });
+  }
+
   const { id } = await params;
+  const existing = await prisma.target.findUnique({
+    where: { id, userId: user.id },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "見つかりません" }, { status: 404 });
+  }
+
   await prisma.target.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
