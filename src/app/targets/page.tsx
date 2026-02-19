@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Heart,
-  Plus,
-  Loader2,
-  ArrowRight,
-  Users,
-} from "lucide-react";
+import { Heart, Plus, Loader2, ArrowRight, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,13 +95,17 @@ export default function TargetsListPage() {
             <Card>
               <CardContent className="pt-5 pb-5">
                 <p className="text-xs text-muted-foreground mb-1">合計予算</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalBudget)}</p>
+                <p className="text-2xl font-bold">
+                  {formatCurrency(totalBudget)}
+                </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-5 pb-5">
                 <p className="text-xs text-muted-foreground mb-1">分析済み</p>
-                <p className="text-2xl font-bold">{analyzed.length}/{targets.length}</p>
+                <p className="text-2xl font-bold">
+                  {analyzed.length}/{targets.length}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -116,10 +114,20 @@ export default function TargetsListPage() {
                 <div className="flex gap-1.5 mt-1">
                   {(["S", "A", "B", "C"] as Rank[]).map((r) =>
                     rankCounts[r] > 0 ? (
-                      <Badge key={r} className={cn("text-white text-xs", `bg-rank-${r.toLowerCase()}`)}>{r}:{rankCounts[r]}</Badge>
-                    ) : null
+                      <Badge
+                        key={r}
+                        className={cn(
+                          "text-white text-xs",
+                          `bg-rank-${r.toLowerCase()}`,
+                        )}
+                      >
+                        {r}:{rankCounts[r]}
+                      </Badge>
+                    ) : null,
                   )}
-                  {analyzed.length === 0 && <span className="text-sm text-muted-foreground">—</span>}
+                  {analyzed.length === 0 && (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -147,7 +155,7 @@ export default function TargetsListPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             {targets.map((t) => {
               const a = t.analysis;
               const rank = (a?.rank || null) as Rank | null;
@@ -155,18 +163,22 @@ export default function TargetsListPage() {
               const btConf = BENEFIT_TYPES.find((b) => b.value === bt);
 
               return (
-                <Link key={t.id} href={`/targets/${t.id}`}>
-                  <Card className={cn(
-                    "hover:shadow-md transition-all cursor-pointer border-2",
-                    rank ? rankBorder[rank] : "hover:border-primary/20"
-                  )}>
-                    <CardContent className="py-5 flex items-center gap-4">
+                <Link key={t.id} href={`/targets/${t.id}`} className="block">
+                  <Card
+                    className={cn(
+                      "hover:shadow-md transition-all cursor-pointer border-2",
+                      rank ? rankBorder[rank] : "hover:border-primary/20",
+                    )}
+                  >
+                    <CardContent className="py-6 flex items-center gap-4">
                       {rank ? (
-                        <div className={cn(
-                          "flex items-center justify-center h-12 w-12 rounded-xl bg-white shadow-sm font-extrabold text-xl shrink-0 border",
-                          RANK_CONFIG[rank].color,
-                          RANK_CONFIG[rank].border
-                        )}>
+                        <div
+                          className={cn(
+                            "flex items-center justify-center h-12 w-12 rounded-xl bg-white shadow-sm font-extrabold text-xl shrink-0 border",
+                            RANK_CONFIG[rank].color,
+                            RANK_CONFIG[rank].border,
+                          )}
+                        >
                           {rank}
                         </div>
                       ) : (
@@ -177,9 +189,14 @@ export default function TargetsListPage() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <p className="font-bold text-base truncate">{t.name}</p>
+                          <p className="font-bold text-base truncate">
+                            {t.name}
+                          </p>
                           {btConf && (
-                            <Badge variant="outline" className="text-xs gap-1 shrink-0">
+                            <Badge
+                              variant="outline"
+                              className="text-xs gap-1 shrink-0"
+                            >
                               {btConf.emoji} {bt}
                             </Badge>
                           )}
@@ -193,7 +210,9 @@ export default function TargetsListPage() {
                       {a && (
                         <div className="hidden sm:block text-right text-sm shrink-0">
                           <p className="font-medium">{a.giftItem}</p>
-                          <p className="text-muted-foreground">{formatCurrency(a.giftPrice)}</p>
+                          <p className="text-muted-foreground">
+                            {formatCurrency(a.giftPrice)}
+                          </p>
                         </div>
                       )}
 
