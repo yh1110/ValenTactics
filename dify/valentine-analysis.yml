@@ -1,0 +1,644 @@
+app:
+  description: >-
+    バレンタイン対象者の情報を受け取り、3軸スコアリング・ランク判定・ギフト提案・メッセージ生成・質問生成を行うワークフロー。
+  icon: "\U0001F496"
+  icon_background: "#FFE4E6"
+  mode: workflow
+  name: ValenTactics Analysis
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.5
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - data:
+          isInIteration: false
+          sourceType: start
+          targetType: llm
+        id: edge-start-to-llm
+        source: start
+        sourceHandle: source
+        target: llm-analysis
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: llm
+          targetType: code
+        id: edge-llm-to-code
+        source: llm-analysis
+        sourceHandle: source
+        target: code-validate
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: end
+        id: edge-code-to-end
+        source: code-validate
+        sourceHandle: source
+        target: end-output
+        targetHandle: target
+        type: custom
+        zIndex: 0
+    nodes:
+      # ════════════════════════════════════════
+      #  Start Node: 入力変数
+      # ════════════════════════════════════════
+      - data:
+          desc: "対象者の全情報を受け取る"
+          title: Start
+          type: start
+          variables:
+            - label: 名前
+              max_length: 48
+              required: true
+              type: text-input
+              variable: name
+            - label: 関係性
+              max_length: 48
+              required: true
+              type: text-input
+              variable: relationship
+            - label: 利益タイプ
+              max_length: 8
+              required: true
+              type: text-input
+              variable: benefit_type
+            - label: 性格
+              max_length: 256
+              required: false
+              type: text-input
+              variable: personality
+            - label: 好みタグ
+              max_length: 512
+              required: false
+              type: text-input
+              variable: preferences
+            - label: 最近の関心事
+              max_length: 512
+              required: false
+              type: text-input
+              variable: recent_interests
+            - label: ギフト反応
+              max_length: 48
+              required: false
+              type: text-input
+              variable: gift_reaction
+            - label: 関係性の目標
+              max_length: 48
+              required: true
+              type: text-input
+              variable: relationship_goal
+            - label: 感情的重要度
+              max_length: 8
+              required: true
+              type: text-input
+              variable: emotional_priority
+            - label: 義理認識
+              max_length: 48
+              required: false
+              type: text-input
+              variable: giri_awareness
+            - label: お返し傾向
+              max_length: 48
+              required: false
+              type: text-input
+              variable: return_tendency
+            - label: 去年渡したか
+              max_length: 8
+              required: true
+              type: text-input
+              variable: gave_last_year
+            - label: お返しあったか
+              max_length: 8
+              required: true
+              type: text-input
+              variable: received_return
+            - label: お返し金額
+              max_length: 16
+              required: false
+              type: text-input
+              variable: return_value
+            - label: 一昨年渡したか
+              max_length: 8
+              required: true
+              type: text-input
+              variable: gave_year_before
+            - label: 一昨年お返し
+              max_length: 8
+              required: true
+              type: text-input
+              variable: received_return_year_before
+            - label: 予算
+              max_length: 16
+              required: true
+              type: text-input
+              variable: budget
+            - label: メモ
+              max_length: 512
+              required: false
+              type: text-input
+              variable: memo
+        height: 800
+        id: start
+        position:
+          x: 80
+          y: 282
+        type: custom
+        width: 244
+
+      # ════════════════════════════════════════
+      #  LLM Node: 分析実行
+      # ════════════════════════════════════════
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: "全分析を実行しJSON出力"
+          model:
+            completion_params:
+              temperature: 0.4
+              max_tokens: 4096
+            mode: chat
+            name: gpt-4o
+            provider: openai
+          prompt_template:
+            - id: system-prompt
+              role: system
+              text: >-
+                あなたはバレンタイン戦略の専門AIアナリストです。
+                対象者の情報を受け取り、以下のルールに厳密に従って分析を行い、JSON形式で結果を出力してください。
+
+
+                ═══════════════════════════════════════
+
+                【スコアリングルール】
+
+                ═══════════════════════════════════════
+
+
+                ■ 軸1: 親密度スコア (intimacy, 0〜100)
+
+                相手をどれだけ理解しているか + 関係性の深さを測る。
+
+                基準値:
+                - パートナー: 85
+                - 気になる人: 60
+                - 友人: 50
+                - 上司: 45
+                - 同僚: 35
+                - その他: 25
+
+                補正:
+                - relationshipGoal: 深めたい +10 / 現状維持 +0 / 礼儀として -10 / 距離を置きたい -25
+                - emotionalPriority: (値 - 3) × 4
+                - 性格タグ数: 1つにつき+4 (最大+16)
+                - 好みタグ数: 1つにつき+2 (最大+12)
+                - 最近の関心事あり: +6
+                - 去年渡して返ってきた: +4
+                - 一昨年渡して返ってきた: +2
+
+
+                ■ 軸2: ROIスコア (roi, 0〜100)
+
+                過去の実績に基づく金銭的リターンの期待値。
+
+                基本ロジック:
+                - 去年渡し+お返しあり → returnValueとbudgetの比率で50〜100
+                  - 倍率3倍以上: 90〜100
+                  - 倍率2倍以上: 80〜90
+                  - 倍率1倍以上: 65〜80
+                  - 倍率1倍未満: 50〜65
+                  - 金額不明: 50〜60
+                - 去年渡し+お返しなし → 2年連続なしなら0〜15、初回なしなら15〜30
+                - 一昨年のみ実績あり → 40〜55
+                - 実績なし → 25〜45
+
+                お返し傾向の補正:
+                - 律儀に返す: +18
+                - 気分次第: +0
+                - 返さないタイプ: -20
+                - 不明: +0
+
+
+                ■ 軸3: 好感度スコア (affinity, 0〜100)
+
+                相手の好み・関心・性格の把握度が主軸。
+
+                基準: 20点から加算
+                - 好みタグ数: 1つにつき+5 (最大+25)
+                - 性格タグ数: 1つにつき+3 (最大+12)
+                - 最近の関心事あり: +12
+                - ギフト反応が不明以外: +6
+                - relationshipGoal: 深めたい +10 / 現状維持 +5 / 距離を置きたい -10
+                - emotionalPriority: (値 - 3) × 4
+                - お返しあり: +3
+                - 去年渡した: +2
+                - メモ10文字以上: +5
+
+
+                ■ 総合スコア (total)
+
+                benefitType による重み分岐:
+                - 有形: intimacy × 0.25 + roi × 0.55 + affinity × 0.20
+                - 無形: intimacy × 0.30 + roi × 0.15 + affinity × 0.55
+
+
+                ■ ランク判定
+
+                - S: total >= 80
+                - A: total >= 60
+                - B: total >= 40
+                - C: total < 40
+
+
+                ═══════════════════════════════════════
+
+                【ギフト提案ルール】
+
+                ═══════════════════════════════════════
+
+                予算と好みタグに基づいて、具体的な商品名・価格・選定理由を提案してください。
+
+                予算帯の目安:
+                - 3000円以上: プレミアムギフト（クラフトビール、ゴディバ、スペシャルティコーヒー等）
+                - 1500〜2999円: ミドルギフト（パティスリーチョコ、TWG紅茶、生チョコ羊羹等）
+                - 1500円未満: カジュアルギフト（ドリップコーヒー、キットカットショコラトリー等）
+
+                好みタグに合致する商品を優先。合致しない場合はバレンタイン定番ギフトを提案。
+                価格はbudget以下に収めること。
+
+
+                ═══════════════════════════════════════
+
+                【メッセージ生成ルール】
+
+                ═══════════════════════════════════════
+
+                relationship に応じたトーンで、2〜3行のメッセージを生成:
+                - パートナー: 感謝と愛情。温かく親密なトーン
+                - 気になる人: さりげなく、距離感を保ちつつ好意を伝える
+                - 上司: 敬語。感謝と敬意
+                - 同僚: カジュアル。「お疲れさま」的な温度感
+                - 友人: フランク。気を遣わない雰囲気
+                - その他: 丁寧だが距離感のある万能トーン
+
+
+                ═══════════════════════════════════════
+
+                【ストーリー生成ルール（無形タイプのみ）】
+
+                ═══════════════════════════════════════
+
+                benefitType が「無形」の場合のみ、渡し方のストーリーを生成してください。
+                - ギフト反応タイプ（恐縮する/控えめ/素直に喜ぶ）に合わせてトーン調整
+                - 最近の関心事があれば織り込む
+                - 3〜5文程度の具体的なシナリオ
+                - 有形タイプの場合は空文字列
+
+
+                ═══════════════════════════════════════
+
+                【質問生成ルール】
+
+                ═══════════════════════════════════════
+
+                情報が不足している項目について、分析精度を上げるための質問を最大5つ生成:
+                - 性格タグが0件 → 性格に関する質問
+                - 好みタグが0件 → 好みに関する質問
+                - 好みタグが3件以下 → 好みを深掘りする質問
+                - 最近の関心事が空 → 関心事に関する質問
+                - ギフト反応が不明 → ギフト反応に関する質問
+                - 有形タイプ固有:
+                  - お返し傾向が不明 → お返し傾向に関する質問
+                  - お返しありだが金額不明 → 金額に関する質問
+                  - 去年お返しなし → 理由を探る質問
+                - 無形タイプ固有:
+                  - 関係を深めたい+関心事なし → 喜ばせるヒントの質問
+                  - 気になる人+好み5件未満 → 観察ポイントの質問
+
+
+                ═══════════════════════════════════════
+
+                【ROI予測ルール】
+
+                ═══════════════════════════════════════
+
+                - returnProbability (0.0〜1.0):
+                  - お返し実績あり: min(0.95, 0.5 + roi × 0.004)
+                  - お返し実績なし: max(0.05, roi × 0.005)
+                - expectedMultiplier (倍率):
+                  - お返し実績あり: 1.0 + returnValue / 2000 (returnValue不明なら1.0 + 1000/2000)
+                  - お返し実績なし: 0.3 + intimacy × 0.008
+
+
+                ═══════════════════════════════════════
+
+                【出力フォーマット】
+
+                ═══════════════════════════════════════
+
+                以下のJSON形式で出力してください。JSON以外のテキストは絶対に含めないでください。
+
+                {
+                  "scoreIntimacy": <0〜100の整数>,
+                  "scoreRoi": <0〜100の整数>,
+                  "scoreAffinity": <0〜100の整数>,
+                  "scoreTotal": <0〜100の整数>,
+                  "rank": "<S|A|B|C>",
+                  "rankReason": "<ランク理由の日本語テキスト>",
+                  "giftItem": "<ギフト名>",
+                  "giftPrice": <price as integer>,
+                  "giftReason": "<選定理由>",
+                  "giftStory": "<渡し方のストーリー。無形タイプのみ。有形は空文字>",
+                  "message": "<メッセージ文面>",
+                  "returnProbability": <0.0〜1.0>,
+                  "expectedMultiplier": <倍率>,
+                  "questions": ["<質問1>", "<質問2>", ...],
+                  "allocatedBudget": <budget value>
+                }
+
+            - id: user-prompt
+              role: user
+              text: >-
+                以下の対象者情報を分析してください。
+
+
+                名前: {{#start.name#}}
+
+                関係性: {{#start.relationship#}}
+
+                利益タイプ: {{#start.benefit_type#}}
+
+                性格: {{#start.personality#}}
+
+                好みタグ: {{#start.preferences#}}
+
+                最近の関心事: {{#start.recent_interests#}}
+
+                ギフト反応: {{#start.gift_reaction#}}
+
+                関係性の目標: {{#start.relationship_goal#}}
+
+                感情的重要度: {{#start.emotional_priority#}}
+
+                義理認識: {{#start.giri_awareness#}}
+
+                お返し傾向: {{#start.return_tendency#}}
+
+                去年渡したか: {{#start.gave_last_year#}}
+
+                お返しあったか: {{#start.received_return#}}
+
+                お返し金額: {{#start.return_value#}}
+
+                一昨年渡したか: {{#start.gave_year_before#}}
+
+                一昨年お返し: {{#start.received_return_year_before#}}
+
+                予算: {{#start.budget#}}円
+
+                メモ: {{#start.memo#}}
+
+          title: 分析実行
+          type: llm
+          variables: []
+          vision:
+            enabled: false
+        height: 98
+        id: llm-analysis
+        position:
+          x: 380
+          y: 282
+        type: custom
+        width: 244
+
+      # ════════════════════════════════════════
+      #  Code Node: JSON解析 + バリデーション
+      # ════════════════════════════════════════
+      - data:
+          code: |
+            import json
+            import re
+
+            def main(llm_output: str) -> dict:
+                # LLM出力からJSONを抽出
+                text = llm_output.strip()
+                # ```json ... ``` で囲まれている場合に対応
+                match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+                if match:
+                    text = match.group(1)
+                # { ... } だけ抽出
+                start = text.find('{')
+                end = text.rfind('}')
+                if start != -1 and end != -1:
+                    text = text[start:end+1]
+
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError:
+                    return {
+                        "scoreIntimacy": 50,
+                        "scoreRoi": 50,
+                        "scoreAffinity": 50,
+                        "scoreTotal": 50,
+                        "rank": "B",
+                        "rankReason": "分析エラー: LLM出力のパースに失敗しました",
+                        "giftItem": "焼き菓子アソート",
+                        "giftPrice": 1500,
+                        "giftReason": "万人受けする安心の選択",
+                        "giftStory": "",
+                        "message": "ほんの気持ちですが、どうぞ。",
+                        "returnProbability": 0.3,
+                        "expectedMultiplier": 0.5,
+                        "questions": [],
+                        "allocatedBudget": 1500,
+                    }
+
+                def clamp_int(v, lo, hi):
+                    try:
+                        return max(lo, min(hi, int(v)))
+                    except (TypeError, ValueError):
+                        return (lo + hi) // 2
+
+                def clamp_float(v, lo, hi):
+                    try:
+                        return max(lo, min(hi, round(float(v), 2)))
+                    except (TypeError, ValueError):
+                        return round((lo + hi) / 2, 2)
+
+                result = {
+                    "scoreIntimacy": clamp_int(data.get("scoreIntimacy"), 0, 100),
+                    "scoreRoi": clamp_int(data.get("scoreRoi"), 0, 100),
+                    "scoreAffinity": clamp_int(data.get("scoreAffinity"), 0, 100),
+                    "scoreTotal": clamp_int(data.get("scoreTotal"), 0, 100),
+                    "rank": data.get("rank", "B") if data.get("rank") in ("S", "A", "B", "C") else "B",
+                    "rankReason": str(data.get("rankReason", ""))[:200],
+                    "giftItem": str(data.get("giftItem", "焼き菓子アソート"))[:100],
+                    "giftPrice": clamp_int(data.get("giftPrice"), 100, 100000),
+                    "giftReason": str(data.get("giftReason", ""))[:200],
+                    "giftStory": str(data.get("giftStory", ""))[:500],
+                    "message": str(data.get("message", "ほんの気持ちですが、どうぞ。"))[:500],
+                    "returnProbability": clamp_float(data.get("returnProbability"), 0.0, 1.0),
+                    "expectedMultiplier": clamp_float(data.get("expectedMultiplier"), 0.0, 10.0),
+                    "questions": [str(q)[:200] for q in data.get("questions", []) if isinstance(q, str)][:5],
+                    "allocatedBudget": clamp_int(data.get("allocatedBudget"), 100, 100000),
+                }
+
+                return result
+          code_language: python3
+          desc: "LLM出力のJSON解析とバリデーション"
+          outputs:
+            scoreIntimacy:
+              children: null
+              type: number
+            scoreRoi:
+              children: null
+              type: number
+            scoreAffinity:
+              children: null
+              type: number
+            scoreTotal:
+              children: null
+              type: number
+            rank:
+              children: null
+              type: string
+            rankReason:
+              children: null
+              type: string
+            giftItem:
+              children: null
+              type: string
+            giftPrice:
+              children: null
+              type: number
+            giftReason:
+              children: null
+              type: string
+            giftStory:
+              children: null
+              type: string
+            message:
+              children: null
+              type: string
+            returnProbability:
+              children: null
+              type: number
+            expectedMultiplier:
+              children: null
+              type: number
+            questions:
+              children:
+                type: string
+              type: array[string]
+            allocatedBudget:
+              children: null
+              type: number
+          title: JSON解析
+          type: code
+          variables:
+            - value_selector:
+                - llm-analysis
+                - text
+              variable: llm_output
+        height: 54
+        id: code-validate
+        position:
+          x: 680
+          y: 282
+        type: custom
+        width: 244
+
+      # ════════════════════════════════════════
+      #  End Node: 出力
+      # ════════════════════════════════════════
+      - data:
+          desc: ""
+          outputs:
+            - value_selector:
+                - code-validate
+                - scoreIntimacy
+              variable: scoreIntimacy
+            - value_selector:
+                - code-validate
+                - scoreRoi
+              variable: scoreRoi
+            - value_selector:
+                - code-validate
+                - scoreAffinity
+              variable: scoreAffinity
+            - value_selector:
+                - code-validate
+                - scoreTotal
+              variable: scoreTotal
+            - value_selector:
+                - code-validate
+                - rank
+              variable: rank
+            - value_selector:
+                - code-validate
+                - rankReason
+              variable: rankReason
+            - value_selector:
+                - code-validate
+                - giftItem
+              variable: giftItem
+            - value_selector:
+                - code-validate
+                - giftPrice
+              variable: giftPrice
+            - value_selector:
+                - code-validate
+                - giftReason
+              variable: giftReason
+            - value_selector:
+                - code-validate
+                - giftStory
+              variable: giftStory
+            - value_selector:
+                - code-validate
+                - message
+              variable: message
+            - value_selector:
+                - code-validate
+                - returnProbability
+              variable: returnProbability
+            - value_selector:
+                - code-validate
+                - expectedMultiplier
+              variable: expectedMultiplier
+            - value_selector:
+                - code-validate
+                - questions
+              variable: questions
+            - value_selector:
+                - code-validate
+                - allocatedBudget
+              variable: allocatedBudget
+          title: 分析結果
+          type: end
+        height: 400
+        id: end-output
+        position:
+          x: 980
+          y: 282
+        type: custom
+        width: 244
