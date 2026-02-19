@@ -25,17 +25,19 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-import type { Rank, BenefitType } from "@/lib/types";
-import { RANK_CONFIG, BENEFIT_TYPES } from "@/lib/types";
+import type { Rank, BenefitType, SuccessType } from "@/lib/types";
+import { RANK_CONFIG, BENEFIT_TYPES, SUCCESS_TYPE_CONFIG } from "@/lib/types";
 import { formatCurrency, cn } from "@/lib/utils";
+import { deleteTarget } from "@/actions/target";
 
 interface AnalysisData {
   scoreIntimacy: number;
   scoreRoi: number;
-  scoreAffinity: number;
+  scoreGiftFit: number;
   scoreTotal: number;
   rank: string;
   rankReason: string;
+  successType: string;
   giftItem: string;
   giftPrice: number;
   giftReason: string;
@@ -45,6 +47,7 @@ interface AnalysisData {
   expectedMultiplier: number;
   questions: string[];
   allocatedBudget: number;
+  riskWarning: string;
 }
 
 interface TargetData {
@@ -77,7 +80,7 @@ interface TargetData {
 function ScoreBar({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <span className={cn("w-16 text-sm shrink-0", accent ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+      <span className={cn("w-20 text-sm shrink-0", accent ? "font-semibold" : "text-muted-foreground")}>{label}</span>
       <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
         <div
           className={cn("h-full rounded-full transition-all", accent ? "bg-primary" : "bg-primary/60")}
@@ -117,7 +120,8 @@ export default function TargetDetailPage() {
     if (!confirm("この対象者を削除しますか？")) return;
     setDeleting(true);
     try {
-      await fetch(`/api/targets/${id}`, { method: "DELETE" });
+      const result = await deleteTarget(id);
+      if (!result.success) throw new Error(result.error);
       router.push("/targets");
     } finally {
       setDeleting(false);
@@ -152,10 +156,14 @@ export default function TargetDetailPage() {
   const btConfig = BENEFIT_TYPES.find((b) => b.value === bt);
   const isTangible = bt === "有形";
 
+  const successType = (a?.successType || "関係構築型") as SuccessType;
+  const stConfig = SUCCESS_TYPE_CONFIG[successType] ?? SUCCESS_TYPE_CONFIG["関係構築型"];
+
   const warnings: string[] = [];
+  if (a?.riskWarning) warnings.push(a.riskWarning);
   if (target.gaveLastYear && !target.receivedReturn && target.gaveYearBefore && !target.receivedReturnYearBefore)
     warnings.push("2年連続お返しなし。撤退を強く推奨します。");
-  if (target.giriAwareness === "本命と受け取られる可能性あり" && target.emotionalPriority <= 2)
+  if (target.giriAwareness === "本命と受け取られる可能性あり" && target.emotionalPriority <= 2 && !a?.riskWarning)
     warnings.push("義理のつもりでも本命と誤解されるリスクがあります。");
   if (isTangible && a && a.scoreRoi < 30)
     warnings.push("ROIが低いです。有形利益の最大化は難しい相手かもしれません。");
@@ -199,12 +207,20 @@ export default function TargetDetailPage() {
               {target.relationship} / {target.gender} / {target.ageGroup} / 予算 {formatCurrency(target.budget)}
             </p>
           </div>
-          {btConfig && (
-            <Badge variant="outline" className="ml-auto gap-1.5 py-1.5 px-3 text-sm">
-              <span>{btConfig.emoji}</span>
-              {btConfig.label}
-            </Badge>
-          )}
+          <div className="ml-auto flex flex-col items-end gap-1.5">
+            {btConfig && (
+              <Badge variant="outline" className="gap-1.5 py-1.5 px-3 text-sm">
+                <span>{btConfig.emoji}</span>
+                {btConfig.label}
+              </Badge>
+            )}
+            {a && (
+              <Badge variant="secondary" className="gap-1.5 py-1 px-2.5 text-xs">
+                <span>{stConfig.emoji}</span>
+                {stConfig.label}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Warnings */}
@@ -253,13 +269,13 @@ export default function TargetDetailPage() {
                   accent={isTangible}
                 />
                 <ScoreBar
-                  label="好感度"
-                  value={a.scoreAffinity}
+                  label="戦略適合度"
+                  value={a.scoreGiftFit}
                   accent={!isTangible}
                 />
                 <Separator />
                 <div className="flex items-center gap-3">
-                  <span className="w-16 text-sm font-semibold shrink-0">総合</span>
+                  <span className="w-20 text-sm font-semibold shrink-0">総合</span>
                   <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
                     <div
                       className={cn("h-full rounded-full transition-all", {
@@ -275,8 +291,8 @@ export default function TargetDetailPage() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {isTangible
-                    ? "重み: 親密度 25% / ROI 55% / 好感度 20%"
-                    : "重み: 親密度 30% / ROI 15% / 好感度 55%"}
+                    ? "重み: 親密度 25% / ROI 55% / 戦略適合度 20%"
+                    : "重み: 親密度 30% / ROI 15% / 戦略適合度 55%"}
                 </p>
               </CardContent>
             </Card>

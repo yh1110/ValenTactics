@@ -62,7 +62,7 @@ import {
   step4Schema,
   targetFormSchema,
   type TargetFormValues,
-} from "@/lib/schema";
+} from "@/schema";
 import { cn } from "@/lib/utils";
 
 const STEPS = [

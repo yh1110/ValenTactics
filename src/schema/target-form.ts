@@ -10,7 +10,7 @@ import {
   RELATIONSHIP_GOALS,
   GIRI_AWARENESS_OPTIONS,
   ALL_RECIPIENT_ACTIONS,
-} from "./types";
+} from "@/lib/types";
 
 // Step 1: 基本情報 + 目的
 export const step1Schema = z.object({

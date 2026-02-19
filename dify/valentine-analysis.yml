@@ -1,6 +1,7 @@
 app:
   description: >-
     バレンタイン対象者の情報を受け取り、3軸スコアリング・ランク判定・ギフト提案・メッセージ生成・質問生成を行うワークフロー。
+    LLMには定性分析のみを担当させ、数値計算はすべてCodeノードで確定計算する。
   icon: "\U0001F496"
   icon_background: "#FFE4E6"
   mode: workflow
@@ -27,9 +28,20 @@ workflow:
       - data:
           isInIteration: false
           sourceType: start
-          targetType: llm
-        id: edge-start-to-llm
+          targetType: code
+        id: edge-start-to-preprocess
         source: start
+        sourceHandle: source
+        target: code-preprocess
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          sourceType: code
+          targetType: llm
+        id: edge-preprocess-to-llm
+        source: code-preprocess
         sourceHandle: source
         target: llm-analysis
         targetHandle: target
@@ -39,10 +51,10 @@ workflow:
           isInIteration: false
           sourceType: llm
           targetType: code
-        id: edge-llm-to-code
+        id: edge-llm-to-postprocess
         source: llm-analysis
         sourceHandle: source
-        target: code-validate
+        target: code-postprocess
         targetHandle: target
         type: custom
         zIndex: 0
@@ -50,8 +62,8 @@ workflow:
           isInIteration: false
           sourceType: code
           targetType: end
-        id: edge-code-to-end
-        source: code-validate
+        id: edge-postprocess-to-end
+        source: code-postprocess
         sourceHandle: source
         target: end-output
         targetHandle: target
@@ -175,16 +187,178 @@ workflow:
         width: 244
 
       # ════════════════════════════════════════
-      #  LLM Node: 分析実行
+      #  Code Node: 前処理（確定計算）
+      #  親密度ベース・ROI・カウントフラグを算出
+      # ════════════════════════════════════════
+      - data:
+          code: |
+            def main(
+                recipient_actions: str,
+                gave_last_year: str,
+                received_return: str,
+                return_value: str,
+                gave_year_before: str,
+                received_return_year_before: str,
+                budget: str,
+                return_tendency: str,
+                personality: str,
+                preferences: str,
+                recent_interests: str,
+                recent_episodes: str,
+                gift_reaction: str,
+            ) -> dict:
+                ACTION_WEIGHTS = {
+                    "相手から連絡が来る": 7,
+                    "プライベートな話題を振られる": 8,
+                    "食事や飲みに誘われた": 10,
+                    "仕事やプライベートの相談をされる": 10,
+                    "誕生日やイベントを覚えてくれる": 9,
+                    "2人きりの時間を作ってくれる": 12,
+                    "自分の変化に気づいてくれる": 8,
+                    "過去の会話内容を覚えている": 7,
+                    "弱みや愚痴を見せてくれる": 10,
+                }
+
+                actions = [a.strip() for a in recipient_actions.split(",") if a.strip()] if recipient_actions else []
+                action_count = len(actions)
+
+                action_sum = sum(ACTION_WEIGHTS.get(a, 0) for a in actions)
+                intimacy_base = 5 + int(action_sum * 0.7)
+
+                gave_ly = gave_last_year == "はい"
+                got_return = received_return == "はい"
+                gave_yb = gave_year_before == "はい"
+                got_return_yb = received_return_year_before == "はい"
+
+                if gave_ly and got_return:
+                    intimacy_base += 3
+                if gave_yb and got_return_yb:
+                    intimacy_base += 2
+
+                # ROI score (deterministic)
+                budget_val = max(500, int(budget)) if budget.isdigit() else 1500
+                return_val = int(return_value) if return_value and return_value.isdigit() else 0
+
+                if gave_ly and got_return:
+                    if return_val <= 0:
+                        roi_score = 55
+                    else:
+                        mult = return_val / budget_val
+                        if mult >= 3:
+                            roi_score = 95
+                        elif mult >= 2:
+                            roi_score = 85
+                        elif mult >= 1:
+                            roi_score = 72
+                        else:
+                            roi_score = 57
+                elif gave_ly and not got_return:
+                    if gave_yb and not got_return_yb:
+                        roi_score = 8
+                    else:
+                        roi_score = 22
+                elif gave_yb and got_return_yb:
+                    roi_score = 48
+                else:
+                    roi_score = 35
+
+                tendency_mod = {"律儀に返す": 18, "気分次第": 0, "返さないタイプ": -20, "不明": 0}
+                roi_score += tendency_mod.get(return_tendency or "", 0)
+                roi_score = max(0, min(100, roi_score))
+
+                personality_list = [p.strip() for p in personality.split(",") if p.strip()] if personality else []
+                preferences_list = [p.strip() for p in preferences.split(",") if p.strip()] if preferences else []
+
+                return {
+                    "intimacy_base": intimacy_base,
+                    "roi_score": roi_score,
+                    "action_count": action_count,
+                    "personality_count": len(personality_list),
+                    "preference_count": len(preferences_list),
+                    "has_recent_interests": "true" if recent_interests and len(recent_interests.strip()) > 0 else "false",
+                    "has_episodes": "true" if recent_episodes and len(recent_episodes.strip()) > 10 else "false",
+                    "gift_reaction_known": "true" if gift_reaction and gift_reaction != "不明" else "false",
+                    "return_tendency_known": "true" if return_tendency and return_tendency != "不明" else "false",
+                }
+          code_language: python3
+          desc: "親密度ベース・ROI・カウントフラグを確定計算"
+          outputs:
+            intimacy_base:
+              children: null
+              type: number
+            roi_score:
+              children: null
+              type: number
+            action_count:
+              children: null
+              type: number
+            personality_count:
+              children: null
+              type: number
+            preference_count:
+              children: null
+              type: number
+            has_recent_interests:
+              children: null
+              type: string
+            has_episodes:
+              children: null
+              type: string
+            gift_reaction_known:
+              children: null
+              type: string
+            return_tendency_known:
+              children: null
+              type: string
+          title: 前処理
+          type: code
+          variables:
+            - value_selector: [start, recipient_actions]
+              variable: recipient_actions
+            - value_selector: [start, gave_last_year]
+              variable: gave_last_year
+            - value_selector: [start, received_return]
+              variable: received_return
+            - value_selector: [start, return_value]
+              variable: return_value
+            - value_selector: [start, gave_year_before]
+              variable: gave_year_before
+            - value_selector: [start, received_return_year_before]
+              variable: received_return_year_before
+            - value_selector: [start, budget]
+              variable: budget
+            - value_selector: [start, return_tendency]
+              variable: return_tendency
+            - value_selector: [start, personality]
+              variable: personality
+            - value_selector: [start, preferences]
+              variable: preferences
+            - value_selector: [start, recent_interests]
+              variable: recent_interests
+            - value_selector: [start, recent_episodes]
+              variable: recent_episodes
+            - value_selector: [start, gift_reaction]
+              variable: gift_reaction
+        height: 54
+        id: code-preprocess
+        position:
+          x: 380
+          y: 282
+        type: custom
+        width: 244
+
+      # ════════════════════════════════════════
+      #  LLM Node: 定性分析
+      #  数値計算は一切行わない
       # ════════════════════════════════════════
       - data:
           context:
             enabled: false
             variable_selector: []
-          desc: "全分析を実行しJSON出力"
+          desc: "エピソード評価・戦略適合度・定性コンテンツを生成"
           model:
             completion_params:
-              temperature: 0.4
+              temperature: 0.3
               max_tokens: 4096
             mode: chat
             name: gpt-4o
@@ -193,105 +367,98 @@ workflow:
             - id: system-prompt
               role: system
               text: >-
-                あなたの分析の最終目的は「ユーザーの利益を最大化するバレンタイン投資判断」です。
+                あなたはバレンタイン投資戦略のアナリストです。
+
+
+                ═══════════════════════════════════════
+
+                【分析の最終目的】
+
+                ═══════════════════════════════════════
+
+
+                ユーザーの利益を最大化するバレンタイン投資判断を導くこと。
+
                 利益とは以下の2種類を指します:
-                - 有形利益: ホワイトデーのお返しによる金銭的リターン
+                - 有形利益: ホワイトデーのお返しによる金銭的リターン（ROI）
                 - 無形利益: 関係性の進展・維持・好印象の獲得
-                ユーザーが選択した利益タイプに基づき、投資対効果が最も高くなる戦略を提案してください。
-                対象者の情報を受け取り、以下のルールに厳密に従って分析を行い、JSON形式で結果を出力してください。
+
+                ユーザーが選択した利益タイプ（benefit_type）に基づき、
+                投資対効果が最も高くなる分析と戦略を提案してください。
+                すべての判断はこの目的に照らして行うこと。
 
 
                 ═══════════════════════════════════════
 
-                【スコアリングルール】
+                【あなたの役割と制約】
 
                 ═══════════════════════════════════════
 
 
-                ■ 軸1: 親密度スコア (intimacy, 0〜100)
+                以下の値はすでにCodeノードで確定計算済みです:
+                - intimacy_base（親密度ベース: 行動指標の重み合計 + 過去双方向実績）
+                - roi_score（ROIスコア: 過去データ + お返し傾向から算出）
 
-                「相手の行動（客観的事実）」のみで測る。
-                ※ 関係性ラベル（パートナー/同僚等）、関係目標、感情的重要度、
-                  性格・好み・関心事は親密度には一切影響しない。
-                相手が自分に対して実際にとっている行動だけが親密度を決める。
+                あなたの仕事は以下の3つだけです:
+                1. エピソード評価 → episodeEval (0〜20の整数)
+                2. 戦略適合度の包括的評価 → scoreGiftFit (0〜100の整数)
+                3. 定性コンテンツ生成: ギフト提案、メッセージ、ストーリー、質問、ランク理由、リスク警告
 
-                ベース: 5（互いの存在を認知している最低ライン）
-
-                行動指標（主軸）:
-                各行動に以下のウェイトを適用し合算。上限なし。
-                - 相手から連絡が来る: +7
-                - プライベートな話題を振られる: +8
-                - 食事や飲みに誘われた: +10
-                - 仕事やプライベートの相談をされる: +10
-                - 誕生日やイベントを覚えてくれる: +9
-                - 2人きりの時間を作ってくれる: +12
-                - 自分の変化に気づいてくれる: +8
-                - 過去の会話内容を覚えている: +7
-                - 弱みや愚痴を見せてくれる: +10
-
-                エピソード評価（0〜+20）:
-                recent_episodes の内容をあなたが読み、相手→自分への好意的行動が含まれているか判断してください。
-                チェックリストに収まらない具体的な行動事実を拾う重要な評価軸です。
-                - 相手からの強い能動的行動が複数含まれる（相談+誘い+助けてくれた等）: +15〜+20
-                - 相手からの能動的な行動が含まれる（相談された、誘われた、助けてもらった等）: +10〜+14
-                - 双方向のやりとり（一緒に何かした等）: +5〜+9
-                - 自分からの一方的な行動のみ、または内容が曖昧: +0〜+4
-                - 空欄・無関係な内容: +0
-
-                過去の双方向実績:
-                - 去年渡して返ってきた: +3
-                - 一昨年渡して返ってきた: +2
+                重要: 総合スコア・ランク・ROI予測・成功タイプの計算はCodeノードが行います。
+                あなたは四則演算を一切行わないでください。
 
 
-                ■ 軸2: ROIスコア (roi, 0〜100)
+                ═══════════════════════════════════════
 
-                過去の実績に基づく金銭的リターンの期待値。
+                【1. エピソード評価】(episodeEval, 0〜20の整数)
 
-                基本ロジック:
-                - 去年渡し+お返しあり → returnValueとbudgetの比率で50〜100
-                  - 倍率3倍以上: 90〜100
-                  - 倍率2倍以上: 80〜90
-                  - 倍率1倍以上: 65〜80
-                  - 倍率1倍未満: 50〜65
-                  - 金額不明: 50〜60
-                - 去年渡し+お返しなし → 2年連続なしなら0〜15、初回なしなら15〜30
-                - 一昨年のみ実績あり → 40〜55
-                - 実績なし → 25〜45
-
-                お返し傾向の補正:
-                - 律儀に返す: +18
-                - 気分次第: +0
-                - 返さないタイプ: -20
-                - 不明: +0
+                ═══════════════════════════════════════
 
 
-                ■ 軸3: 好感度スコア (affinity, 0〜100)
+                recent_episodes の内容を読み、「相手→ユーザー」への好意的行動の質と量を判断:
+
+                - 15〜20: 相手からの強い能動的行動が複数含まれる（相談+誘い+助けてくれた等）
+                - 10〜14: 相手からの能動的な行動が含まれる（相談された、誘われた、助けてもらった等）
+                - 5〜9: 双方向のやりとり（一緒に何かした等）
+                - 0〜4: 自分からの一方的な行動のみ、または内容が曖昧
+                - 0: 空欄・無関係な内容
+
+                ※ チェックリストに収まらない具体的な行動事実を拾う重要な評価軸です。
+
+
+                ═══════════════════════════════════════
+
+                【2. 戦略適合度】(scoreGiftFit, 0〜100の整数)
+
+                ═══════════════════════════════════════
+
 
                 「最適化されたギフト戦略が、この人にどれだけ効果を発揮しうるか」を包括的に判断する。
-                ※ 性格・好み・関心事・ギフト反応は単体ではスコアにならない。
-                  これらはあくまで相手の「性質」であり、コンテキスト情報として扱うこと。
+                この軸は「ユーザーの利益最大化」に直結する — ギフトが刺されば有形ならお返しの質が上がり、無形なら好印象が最大化される。
 
-                以下の情報をコンテキストとして読み取り、総合的に0〜100で評価してください:
 
-                【コンテキスト情報（性質）】
+                【コンテキスト情報（相手の性質）】
                 - personality（性格タグ）
                 - preferences（好みタグ）
                 - recent_interests（最近の関心事）
                 - gift_reaction（ギフト反応タイプ）
-                これらは「知っている数」をスコアにするものではない。
-                情報がゼロの場合はギフト最適化の余地が低いことを意味する。
+
+                ※ これらは「知っている数」をスコアにするものではない。
+                性質はあくまでコンテキスト。行動事実や実績と組み合わせて判断すること。
+
 
                 【判断基準】
                 1. 性質と行動の整合性:
                    行動指標・エピソードと性質が噛み合っているほど、ギフト戦略の精度が上がる。
-                   例: 「グルメ」な人に「食事に誘われた」→ 食を軸にしたギフトが高確率で刺さる
+                   例: 「グルメ」な人に「食事に誘われた」→ 食の好みを軸にしたギフトが高確率で刺さる
                    例: 「恐縮するタイプ」+「2人きりの時間を作ってくれる」→ さりげない渡し方が最適
                 2. 性質情報の充実度と一貫性:
-                   情報が多く、かつ矛盾がなければ、最適なギフトを絞り込める可能性が高い。
+                   情報が多く矛盾がなければ、最適なギフトを絞り込める可能性が高い。
                    情報がゼロや矛盾だらけなら、ギフト提案の精度は下がる。
                 3. ギフト戦略の実行可能性:
                    行動指標やエピソードから見て、ギフトを渡す自然な機会があるか。
                    相手がギフトを好意的に受け取る土壌（行動的な好意）があるか。
+
 
                 【スコア目安】
                 - 80〜100: 性質が豊富で行動との整合性が高く、高精度なギフト戦略が可能
@@ -301,48 +468,37 @@ workflow:
                 - 0〜19: ほぼ情報なし。ギフト最適化の余地がほとんどない
 
 
-                ■ 総合スコア (total)
+                ═══════════════════════════════════════
 
-                benefitType による重み分岐:
-                - 有形: intimacy × 0.25 + roi × 0.55 + affinity × 0.20
-                - 無形: intimacy × 0.30 + roi × 0.15 + affinity × 0.55
+                【3. ランク理由】(rankReason, 自由文)
+
+                ═══════════════════════════════════════
 
 
-                ■ ランク判定
+                この人への投資判断の理由を、1〜2文の自然な日本語で述べてください。
+                テンプレートではなく、この人に固有の状況を踏まえた文章を書くこと。
 
-                - S: total >= 80
-                - A: total >= 60
-                - B: total >= 40
-                - C: total < 40
-
-                ■ ランク理由
-
-                以下を参考に、該当する要素を最大3つ結合:
-                - 有形で ROI >= 70 → "ROI実績が高い"
-                - 有形で ROI <= 30 → "ROI実績が低い"
-                - 有形で intimacy >= 70 → "相手からの好意的行動が多い"
-                - 無形で affinity >= 70 → "相手情報が充実"
-                - 無形で affinity <= 30 → "相手の情報が不足"
-                - 無形で intimacy >= 70 → "深い関係性を活かせる"
-                - 行動指標 4件以上 → "相手の好意的行動が多い"
-                - 行動指標 0件 → "相手の行動データが不足"
-                - 律儀に返す → "お返し期待度が高い"
-                - 性格3タグ以上 → "性格をよく把握"
-                - 距離を置きたい → "距離を置きたい意向"
+                以下の要素を適宜織り込む:
+                - benefit_type に照らした投資効率の見通し
+                - emotional_priority（感情的重要度）が高い場合はその意向を尊重
+                - relationship_goal（関係目標）の方向性
+                - 主要なスコアの傾向（intimacy_base, roi_score を参考に）
 
 
                 ═══════════════════════════════════════
 
-                【ギフト提案ルール】
+                【4. ギフト提案ルール】
 
                 ═══════════════════════════════════════
+
 
                 予算と好みタグに基づいて、具体的な商品名・価格・選定理由を提案してください。
+                利益最大化の観点で: 有形タイプなら「お返しを引き出しやすいギフト」、無形タイプなら「好印象を最大化するギフト」を意識すること。
 
                 予算帯の目安:
-                - 3000円以上: プレミアムギフト（クラフトビール、ゴディバ、スペシャルティコーヒー等）
-                - 1500〜2999円: ミドルギフト（パティスリーチョコ、TWG紅茶、生チョコ羊羹等）
-                - 1500円未満: カジュアルギフト（ドリップコーヒー、キットカットショコラトリー等）
+                - 3000円以上: プレミアムギフト
+                - 1500〜2999円: ミドルギフト
+                - 1500円未満: カジュアルギフト
 
                 好みタグに合致する商品を優先。合致しない場合はバレンタイン定番ギフトを提案。
                 価格はbudget以下に収めること。
@@ -351,9 +507,10 @@ workflow:
 
                 ═══════════════════════════════════════
 
-                【メッセージ生成ルール】
+                【5. メッセージ生成ルール】
 
                 ═══════════════════════════════════════
+
 
                 relationship に応じたトーンで、2〜3行のメッセージを生成:
                 - パートナー: 感謝と愛情。温かく親密なトーン
@@ -363,15 +520,20 @@ workflow:
                 - 友人: フランク。気を遣わない雰囲気
                 - その他: 丁寧だが距離感のある万能トーン
 
+                giri_awareness の考慮:
+                - 「義理と認識される」→ ビジネスライクなトーンに寄せる
+                - 「本命と受け取られる可能性あり」→ 誤解を生まない距離感に注意
+
 
                 ═══════════════════════════════════════
 
-                【ストーリー生成ルール（無形タイプのみ）】
+                【6. ストーリー生成ルール（無形タイプのみ）】
 
                 ═══════════════════════════════════════
 
-                benefitType が「無形」の場合のみ、渡し方のストーリーを生成してください。
-                - ギフト反応タイプ（恐縮する/控えめ/素直に喜ぶ）に合わせてトーン調整
+
+                benefit_type が「無形」の場合のみ、渡し方のストーリーを生成してください。
+                - ギフト反応タイプに合わせてトーン調整
                 - 最近の関心事があれば織り込む
                 - 最近のエピソードがあれば距離感の描写に活用する
                 - 3〜5文程度の具体的なシナリオ
@@ -380,40 +542,38 @@ workflow:
 
                 ═══════════════════════════════════════
 
-                【質問生成ルール】
+                【7. 質問生成ルール】
 
                 ═══════════════════════════════════════
+
 
                 情報が不足している項目について、対象者を深掘りするための質問を最大5つ生成。
-                優先度順:
-                1. 行動指標が0件 → 相手の行動を振り返る質問（連絡・相談・誘いなどの事実確認）
-                2. 行動指標が2件以下 → 信頼・優先度・興味カテゴリでの追加確認
-                3. 性格タグが0件 → 性格に関する質問
-                4. 好みタグが0件 → 好みに関する質問
-                5. 好みタグが3件以下 → 好みを深掘りする質問
-                6. 最近の関心事が空 → 関心事に関する質問
-                7. ギフト反応が不明 → ギフト反応に関する質問
-                8. 有形タイプ固有:
-                   - お返し傾向が不明 → お返し傾向に関する質問
-                   - お返しありだが金額不明 → 金額に関する質問
-                   - 去年お返しなし → 理由を探る質問
-                9. 無形タイプ固有:
-                   - 関係を深めたい+関心事なし → 喜ばせるヒントの質問
-                   - 気になる人+好み5件未満 → 観察ポイントの質問
+                質問は「利益最大化のために何を知るべきか」の観点で優先順位をつけること。
+
+                以下のフラグを参考にしてください（Codeノードで事前計算済み）:
+                - action_count（行動指標の件数。0ならまず行動指標を問う）
+                - personality_count（性格タグの件数）
+                - preference_count（好みタグの件数）
+                - has_recent_interests（最近の関心事の有無）
+                - has_episodes（エピソードの有無）
+                - gift_reaction_known（ギフト反応が既知か）
+
+                優先度順: 行動指標 > エピソード > 好み > 性格 > 関心事 > ギフト反応 > お返し傾向
 
 
                 ═══════════════════════════════════════
 
-                【ROI予測ルール】
+                【8. リスク警告】(riskWarning, 任意)
 
                 ═══════════════════════════════════════
 
-                - returnProbability (0.0〜1.0):
-                  - お返し実績あり: min(0.95, 0.5 + roi × 0.004)
-                  - お返し実績なし: max(0.05, roi × 0.005)
-                - expectedMultiplier (倍率):
-                  - お返し実績あり: 1.0 + returnValue / 2000 (returnValue不明なら1.0 + 1000/2000)
-                  - お返し実績なし: 0.3 + intimacy × 0.008
+
+                以下の条件に該当する場合、適切な警告文を生成:
+                - giri_awareness が「本命と受け取られる可能性あり」→ 誤解リスクの警告
+                - relationship_goal が「距離を置きたい」→ ギフト自体の必要性を問う
+                - emotional_priority が1〜2で予算が高い → コスト対効果の再考を促す
+
+                該当なしの場合は空文字列。
 
 
                 ═══════════════════════════════════════
@@ -422,24 +582,20 @@ workflow:
 
                 ═══════════════════════════════════════
 
+
                 以下のJSON形式で出力してください。JSON以外のテキストは絶対に含めないでください。
 
                 {
-                  "scoreIntimacy": <0〜100の整数>,
-                  "scoreRoi": <0〜100の整数>,
-                  "scoreAffinity": <0〜100の整数>,
-                  "scoreTotal": <0〜100の整数>,
-                  "rank": "<S|A|B|C>",
-                  "rankReason": "<ランク理由の日本語テキスト>",
+                  "episodeEval": <0〜20の整数>,
+                  "scoreGiftFit": <0〜100の整数>,
+                  "rankReason": "<投資判断の理由。自然な1〜2文>",
                   "giftItem": "<ギフト名>",
                   "giftPrice": <price as integer>,
                   "giftReason": "<選定理由>",
                   "giftStory": "<渡し方のストーリー。無形タイプのみ。有形は空文字>",
                   "message": "<メッセージ文面>",
-                  "returnProbability": <0.0〜1.0>,
-                  "expectedMultiplier": <倍率>,
                   "questions": ["<質問1>", "<質問2>", ...],
-                  "allocatedBudget": <budget value>
+                  "riskWarning": "<リスク警告。該当なしは空文字>"
                 }
 
             - id: user-prompt
@@ -447,6 +603,8 @@ workflow:
               text: >-
                 以下の対象者情報を分析してください。
 
+
+                ── 対象者データ ──
 
                 名前: {{#start.name#}}
 
@@ -472,23 +630,31 @@ workflow:
 
                 義理認識: {{#start.giri_awareness#}}
 
-                お返し傾向: {{#start.return_tendency#}}
-
-                去年渡したか: {{#start.gave_last_year#}}
-
-                お返しあったか: {{#start.received_return#}}
-
-                お返し金額: {{#start.return_value#}}
-
-                一昨年渡したか: {{#start.gave_year_before#}}
-
-                一昨年お返し: {{#start.received_return_year_before#}}
-
                 予算: {{#start.budget#}}円
 
                 メモ: {{#start.memo#}}
 
-          title: 分析実行
+                ── 事前計算済みの値（Codeノードで確定計算済み）──
+
+                親密度ベース: {{#code-preprocess.intimacy_base#}}
+
+                ROIスコア: {{#code-preprocess.roi_score#}}
+
+                行動指標数: {{#code-preprocess.action_count#}}
+
+                性格タグ数: {{#code-preprocess.personality_count#}}
+
+                好みタグ数: {{#code-preprocess.preference_count#}}
+
+                関心事あり: {{#code-preprocess.has_recent_interests#}}
+
+                エピソードあり: {{#code-preprocess.has_episodes#}}
+
+                ギフト反応既知: {{#code-preprocess.gift_reaction_known#}}
+
+                お返し傾向既知: {{#code-preprocess.return_tendency_known#}}
+
+          title: 定性分析
           type: llm
           variables: []
           vision:
@@ -496,83 +662,150 @@ workflow:
         height: 98
         id: llm-analysis
         position:
-          x: 380
+          x: 680
           y: 282
         type: custom
         width: 244
 
       # ════════════════════════════════════════
-      #  Code Node: JSON解析 + バリデーション
+      #  Code Node: 後処理（確定計算）
+      #  総合スコア・ランク・成功タイプ・ROI予測
       # ════════════════════════════════════════
       - data:
           code: |
             import json
             import re
 
-            def main(llm_output: str) -> dict:
+            def main(
+                llm_output: str,
+                intimacy_base: int,
+                roi_score: int,
+                benefit_type: str,
+                emotional_priority: str,
+                relationship_goal: str,
+                received_return: str,
+                return_value: str,
+                giri_awareness: str,
+                relationship: str,
+            ) -> dict:
                 text = llm_output.strip()
                 match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
                 if match:
                     text = match.group(1)
-                start = text.find('{')
-                end = text.rfind('}')
-                if start != -1 and end != -1:
-                    text = text[start:end+1]
+                start_idx = text.find('{')
+                end_idx = text.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    text = text[start_idx:end_idx+1]
 
                 try:
                     data = json.loads(text)
                 except json.JSONDecodeError:
-                    return {
-                        "scoreIntimacy": 50,
-                        "scoreRoi": 50,
-                        "scoreAffinity": 50,
-                        "scoreTotal": 50,
-                        "rank": "B",
-                        "rankReason": "分析エラー: LLM出力のパースに失敗しました",
-                        "giftItem": "焼き菓子アソート",
-                        "giftPrice": 1500,
-                        "giftReason": "万人受けする安心の選択",
-                        "giftStory": "",
-                        "message": "ほんの気持ちですが、どうぞ。",
-                        "returnProbability": 0.3,
-                        "expectedMultiplier": 0.5,
-                        "questions": [],
-                        "allocatedBudget": 1500,
-                    }
+                    data = {}
 
-                def clamp_int(v, lo, hi):
+                def clamp_int(v, lo, hi, default=None):
+                    if default is None:
+                        default = (lo + hi) // 2
                     try:
                         return max(lo, min(hi, int(v)))
                     except (TypeError, ValueError):
-                        return (lo + hi) // 2
+                        return default
 
-                def clamp_float(v, lo, hi):
-                    try:
-                        return max(lo, min(hi, round(float(v), 2)))
-                    except (TypeError, ValueError):
-                        return round((lo + hi) / 2, 2)
+                # LLM outputs
+                episode_eval = clamp_int(data.get("episodeEval"), 0, 20, 0)
+                score_gift_fit = clamp_int(data.get("scoreGiftFit"), 0, 100, 50)
 
-                result = {
-                    "scoreIntimacy": clamp_int(data.get("scoreIntimacy"), 0, 100),
-                    "scoreRoi": clamp_int(data.get("scoreRoi"), 0, 100),
-                    "scoreAffinity": clamp_int(data.get("scoreAffinity"), 0, 100),
-                    "scoreTotal": clamp_int(data.get("scoreTotal"), 0, 100),
-                    "rank": data.get("rank", "B") if data.get("rank") in ("S", "A", "B", "C") else "B",
-                    "rankReason": str(data.get("rankReason", ""))[:200],
+                # Final intimacy = base + episode evaluation, clamped to 0-100
+                score_intimacy = min(100, max(0, int(intimacy_base) + episode_eval))
+                score_roi = max(0, min(100, int(roi_score)))
+
+                # Total score (weighted by benefit_type)
+                if benefit_type == "有形":
+                    score_total = round(score_intimacy * 0.25 + score_roi * 0.55 + score_gift_fit * 0.20)
+                else:
+                    score_total = round(score_intimacy * 0.30 + score_roi * 0.15 + score_gift_fit * 0.55)
+                score_total = max(0, min(100, score_total))
+
+                # Rank determination
+                if score_total >= 80:
+                    rank = "S"
+                elif score_total >= 60:
+                    rank = "A"
+                elif score_total >= 40:
+                    rank = "B"
+                else:
+                    rank = "C"
+
+                # Emotional priority floor (損切り防止)
+                ep = clamp_int(emotional_priority, 1, 5, 3)
+                if ep >= 5 and rank in ("B", "C"):
+                    rank = "A"
+                elif ep >= 4 and rank == "C":
+                    rank = "B"
+
+                # 距離を置きたい + 重要度低い → ランク上限制限
+                if relationship_goal == "距離を置きたい" and ep <= 2:
+                    if rank in ("S", "A"):
+                        rank = "B"
+
+                # Success type
+                if relationship_goal == "距離を置きたい" and ep <= 2:
+                    success_type = "損切り推奨"
+                elif benefit_type == "有形" and score_roi >= 60 and ep >= 4:
+                    success_type = "完全成功"
+                elif benefit_type == "有形" and score_roi >= 50:
+                    success_type = "投資型"
+                elif benefit_type == "無形" and ep >= 4:
+                    success_type = "感情型"
+                elif benefit_type == "無形" and score_intimacy >= 50:
+                    success_type = "関係構築型"
+                elif ep >= 4:
+                    success_type = "感情型"
+                else:
+                    success_type = "要検討"
+
+                # giri_awareness ペナルティ: 恋愛対象でない相手に本命と思われるリスク
+                if (giri_awareness == "本命と受け取られる可能性あり"
+                        and relationship not in ("気になる人", "パートナー")):
+                    if rank == "S":
+                        rank = "A"
+                    elif rank == "A":
+                        rank = "B"
+                    elif rank == "B":
+                        rank = "C"
+
+                # ROI prediction
+                got_return = received_return == "はい"
+                return_val = int(return_value) if return_value and return_value.isdigit() else 0
+
+                if got_return:
+                    return_probability = min(0.95, 0.5 + score_roi * 0.004)
+                    rv = return_val if return_val > 0 else 1000
+                    expected_multiplier = round(1.0 + rv / 2000, 2)
+                else:
+                    return_probability = max(0.05, score_roi * 0.005)
+                    expected_multiplier = round(0.3 + score_intimacy * 0.008, 2)
+                return_probability = round(return_probability, 2)
+
+                return {
+                    "scoreIntimacy": score_intimacy,
+                    "scoreRoi": score_roi,
+                    "scoreGiftFit": score_gift_fit,
+                    "scoreTotal": score_total,
+                    "rank": rank,
+                    "successType": success_type,
+                    "rankReason": str(data.get("rankReason", ""))[:300],
                     "giftItem": str(data.get("giftItem", "焼き菓子アソート"))[:100],
-                    "giftPrice": clamp_int(data.get("giftPrice"), 100, 100000),
+                    "giftPrice": clamp_int(data.get("giftPrice"), 100, 100000, 1500),
                     "giftReason": str(data.get("giftReason", ""))[:200],
                     "giftStory": str(data.get("giftStory", ""))[:500],
                     "message": str(data.get("message", "ほんの気持ちですが、どうぞ。"))[:500],
-                    "returnProbability": clamp_float(data.get("returnProbability"), 0.0, 1.0),
-                    "expectedMultiplier": clamp_float(data.get("expectedMultiplier"), 0.0, 10.0),
+                    "returnProbability": return_probability,
+                    "expectedMultiplier": expected_multiplier,
                     "questions": [str(q)[:200] for q in data.get("questions", []) if isinstance(q, str)][:5],
-                    "allocatedBudget": clamp_int(data.get("allocatedBudget"), 100, 100000),
+                    "riskWarning": str(data.get("riskWarning", ""))[:300],
                 }
-
-                return result
           code_language: python3
-          desc: "LLM出力のJSON解析とバリデーション"
+          desc: "総合スコア・ランク・成功タイプ・ROI予測を確定計算"
           outputs:
             scoreIntimacy:
               children: null
@@ -580,13 +813,16 @@ workflow:
             scoreRoi:
               children: null
               type: number
-            scoreAffinity:
+            scoreGiftFit:
               children: null
               type: number
             scoreTotal:
               children: null
               type: number
             rank:
+              children: null
+              type: string
+            successType:
               children: null
               type: string
             rankReason:
@@ -614,23 +850,37 @@ workflow:
               children: null
               type: number
             questions:
-              children:
-                type: string
               type: array[string]
-            allocatedBudget:
+            riskWarning:
               children: null
-              type: number
-          title: JSON解析
+              type: string
+          title: 後処理
           type: code
           variables:
-            - value_selector:
-                - llm-analysis
-                - text
+            - value_selector: [llm-analysis, text]
               variable: llm_output
+            - value_selector: [code-preprocess, intimacy_base]
+              variable: intimacy_base
+            - value_selector: [code-preprocess, roi_score]
+              variable: roi_score
+            - value_selector: [start, benefit_type]
+              variable: benefit_type
+            - value_selector: [start, emotional_priority]
+              variable: emotional_priority
+            - value_selector: [start, relationship_goal]
+              variable: relationship_goal
+            - value_selector: [start, received_return]
+              variable: received_return
+            - value_selector: [start, return_value]
+              variable: return_value
+            - value_selector: [start, giri_awareness]
+              variable: giri_awareness
+            - value_selector: [start, relationship]
+              variable: relationship
         height: 54
-        id: code-validate
+        id: code-postprocess
         position:
-          x: 680
+          x: 980
           y: 282
         type: custom
         width: 244
@@ -641,72 +891,44 @@ workflow:
       - data:
           desc: ""
           outputs:
-            - value_selector:
-                - code-validate
-                - scoreIntimacy
+            - value_selector: [code-postprocess, scoreIntimacy]
               variable: scoreIntimacy
-            - value_selector:
-                - code-validate
-                - scoreRoi
+            - value_selector: [code-postprocess, scoreRoi]
               variable: scoreRoi
-            - value_selector:
-                - code-validate
-                - scoreAffinity
-              variable: scoreAffinity
-            - value_selector:
-                - code-validate
-                - scoreTotal
+            - value_selector: [code-postprocess, scoreGiftFit]
+              variable: scoreGiftFit
+            - value_selector: [code-postprocess, scoreTotal]
               variable: scoreTotal
-            - value_selector:
-                - code-validate
-                - rank
+            - value_selector: [code-postprocess, rank]
               variable: rank
-            - value_selector:
-                - code-validate
-                - rankReason
+            - value_selector: [code-postprocess, successType]
+              variable: successType
+            - value_selector: [code-postprocess, rankReason]
               variable: rankReason
-            - value_selector:
-                - code-validate
-                - giftItem
+            - value_selector: [code-postprocess, giftItem]
               variable: giftItem
-            - value_selector:
-                - code-validate
-                - giftPrice
+            - value_selector: [code-postprocess, giftPrice]
               variable: giftPrice
-            - value_selector:
-                - code-validate
-                - giftReason
+            - value_selector: [code-postprocess, giftReason]
               variable: giftReason
-            - value_selector:
-                - code-validate
-                - giftStory
+            - value_selector: [code-postprocess, giftStory]
               variable: giftStory
-            - value_selector:
-                - code-validate
-                - message
+            - value_selector: [code-postprocess, message]
               variable: message
-            - value_selector:
-                - code-validate
-                - returnProbability
+            - value_selector: [code-postprocess, returnProbability]
               variable: returnProbability
-            - value_selector:
-                - code-validate
-                - expectedMultiplier
+            - value_selector: [code-postprocess, expectedMultiplier]
               variable: expectedMultiplier
-            - value_selector:
-                - code-validate
-                - questions
+            - value_selector: [code-postprocess, questions]
               variable: questions
-            - value_selector:
-                - code-validate
-                - allocatedBudget
-              variable: allocatedBudget
+            - value_selector: [code-postprocess, riskWarning]
+              variable: riskWarning
           title: 分析結果
           type: end
         height: 400
         id: end-output
         position:
-          x: 980
+          x: 1280
           y: 282
         type: custom
         width: 244

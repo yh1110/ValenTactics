@@ -24,10 +24,11 @@ interface DifyWorkflowInput {
 export interface DifyAnalysisResult {
   scoreIntimacy: number;
   scoreRoi: number;
-  scoreAffinity: number;
+  scoreGiftFit: number;
   scoreTotal: number;
   rank: string;
   rankReason: string;
+  successType: string;
   giftItem: string;
   giftPrice: number;
   giftReason: string;
@@ -36,7 +37,7 @@ export interface DifyAnalysisResult {
   returnProbability: number;
   expectedMultiplier: number;
   questions: string[];
-  allocatedBudget: number;
+  riskWarning: string;
 }
 
 interface DifyWorkflowResponse {
@@ -125,10 +126,11 @@ export async function runDifyAnalysis(
   return {
     scoreIntimacy: Number(outputs.scoreIntimacy) || 50,
     scoreRoi: Number(outputs.scoreRoi) || 50,
-    scoreAffinity: Number(outputs.scoreAffinity) || 50,
+    scoreGiftFit: Number(outputs.scoreGiftFit) || 50,
     scoreTotal: Number(outputs.scoreTotal) || 50,
     rank: String(outputs.rank || "B"),
     rankReason: String(outputs.rankReason || ""),
+    successType: String(outputs.successType || "関係構築型"),
     giftItem: String(outputs.giftItem || "焼き菓子アソート"),
     giftPrice: Number(outputs.giftPrice) || 1500,
     giftReason: String(outputs.giftReason || ""),
@@ -139,6 +141,6 @@ export async function runDifyAnalysis(
     questions: Array.isArray(outputs.questions)
       ? outputs.questions.map(String)
       : [],
-    allocatedBudget: Number(outputs.allocatedBudget) || 1500,
+    riskWarning: String(outputs.riskWarning || ""),
   };
 }

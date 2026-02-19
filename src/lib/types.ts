@@ -112,12 +112,28 @@ export const RECIPIENT_ACTION_CATEGORIES: RecipientActionCategory[] = [
 
 export const ALL_RECIPIENT_ACTIONS: RecipientAction[] = RECIPIENT_ACTION_CATEGORIES.flatMap((c) => c.items);
 
+// ── 成功タイプ ──
+
+export type SuccessType = "完全成功" | "投資型" | "感情型" | "関係構築型" | "損切り推奨" | "要検討";
+
+export const SUCCESS_TYPE_CONFIG: Record<
+  SuccessType,
+  { emoji: string; label: string; description: string }
+> = {
+  "完全成功":   { emoji: "📈", label: "完全成功",   description: "高ROI＋高親密度＋感情的にも重要" },
+  "投資型":     { emoji: "💰", label: "投資型",     description: "金銭的リターンが最も見込める" },
+  "感情型":     { emoji: "💝", label: "感情型",     description: "感情的な価値・満足感を重視" },
+  "関係構築型": { emoji: "🤝", label: "関係構築型", description: "関係性の進展・維持に投資" },
+  "損切り推奨": { emoji: "✂️", label: "損切り推奨", description: "投資効率が低く見送りを検討" },
+  "要検討":     { emoji: "🔍", label: "要検討",     description: "情報不足で判定困難。データ追加を推奨" },
+};
+
 // ── スコア・分析結果 ──
 
 export interface ScoreBreakdown {
   intimacy: number;
   roi: number;
-  affinity: number;
+  giftFit: number;
   total: number;
 }
 

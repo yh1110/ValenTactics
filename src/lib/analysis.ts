@@ -12,6 +12,7 @@ import type {
   ReturnTendency,
   GiftReaction,
   RecipientAction,
+  SuccessType,
 } from "./types";
 
 export interface TargetInput {
@@ -48,11 +49,12 @@ export interface AnalysisOutput {
   scores: ScoreBreakdown;
   rank: Rank;
   rankReason: string;
+  successType: SuccessType;
   giftSuggestion: GiftSuggestion;
   message: string;
   roiPrediction: RoiPrediction;
   questions: string[];
-  allocatedBudget: number;
+  riskWarning: string;
 }
 
 // ═══════════════════════════════════════════════
@@ -76,10 +78,12 @@ const ACTION_WEIGHTS: Record<RecipientAction, number> = {
 function calcIntimacy(t: TargetInput): number {
   let score = 5;
 
-  // ── 行動指標のみで親密度を測る ──
+  // 行動指標: 0.7x圧縮で天井効果を緩和（全行動81pt → 圧縮後≈57pt）
+  let actionSum = 0;
   for (const action of t.recipientActions) {
-    score += ACTION_WEIGHTS[action];
+    actionSum += ACTION_WEIGHTS[action];
   }
+  score += Math.round(actionSum * 0.7);
 
   // Dify LLM ではエピソードの内容を評価して 0〜20pt を加算する。
   // ローカルフォールバックでは内容評価不可のため、存在有無のみで控えめに加点。
@@ -117,7 +121,6 @@ function calcRoi(t: TargetInput): number {
     base = rand(25, 45);
   }
 
-  // 相手のお返し傾向で補正
   const tendencyMod: Record<ReturnTendency, number> = {
     "律儀に返す": 18,
     "気分次第": 0,
@@ -130,27 +133,24 @@ function calcRoi(t: TargetInput): number {
 }
 
 // ═══════════════════════════════════════════════
-//  無形軸: 好感度 / アフィニティ (0〜100)
+//  戦略適合度 (0〜100)
 //  ローカルフォールバック: 客観的シグナルのみで簡易推定
 //  ※ 性格・好み・関心事・ギフト反応はスコアに影響しない
 //    （suggestGift / buildStory でのみ使用）
 //  Dify LLM では性質を含む全データを包括的に評価する
 // ═══════════════════════════════════════════════
-function calcAffinity(t: TargetInput): number {
+function calcGiftFit(t: TargetInput): number {
   let score = 15;
 
-  // ── 行動指標: 相手が好意的ならギフトの効果も高い ──
   const actionCount = t.recipientActions.length;
   if (actionCount >= 6) score += 35;
   else if (actionCount >= 4) score += 25;
   else if (actionCount >= 2) score += 15;
   else if (actionCount >= 1) score += 8;
 
-  // ── エピソード: 具体的なやりとりがある = 戦略の手がかりがある ──
   if (t.recentEpisodes.length > 30) score += 20;
   else if (t.recentEpisodes.length > 10) score += 12;
 
-  // ── 過去のギフト交換実績: 成功体験がある = 再現可能性が高い ──
   if (t.gaveLastYear && t.receivedReturn) score += 15;
   else if (t.gaveLastYear) score += 5;
   if (t.gaveYearBefore && t.receivedReturnYearBefore) score += 8;
@@ -161,11 +161,11 @@ function calcAffinity(t: TargetInput): number {
 // ═══════════════════════════════════════════════
 //  総合スコア（有形 / 無形で重み分岐）
 // ═══════════════════════════════════════════════
-function calcTotal(intimacy: number, roi: number, affinity: number, bt: BenefitType): number {
+function calcTotal(intimacy: number, roi: number, giftFit: number, bt: BenefitType): number {
   if (bt === "有形") {
-    return Math.round(intimacy * 0.25 + roi * 0.55 + affinity * 0.20);
+    return Math.round(intimacy * 0.25 + roi * 0.55 + giftFit * 0.20);
   }
-  return Math.round(intimacy * 0.30 + roi * 0.15 + affinity * 0.55);
+  return Math.round(intimacy * 0.30 + roi * 0.15 + giftFit * 0.55);
 }
 
 function determineRank(total: number): Rank {
@@ -173,6 +173,46 @@ function determineRank(total: number): Rank {
   if (total >= 60) return "A";
   if (total >= 40) return "B";
   return "C";
+}
+
+// ランク補正: emotional_priority フロア + giri_awareness ペナルティ
+function applyRankAdjustments(
+  rank: Rank, ep: EmotionalPriority, goal: RelationshipGoal,
+  giriAwareness: string, relationship: Relationship,
+): Rank {
+  let adjusted = rank;
+
+  // 高い感情的重要度 → ランク下限を保証（損切り防止）
+  if (ep >= 5 && (adjusted === "B" || adjusted === "C")) adjusted = "A";
+  else if (ep >= 4 && adjusted === "C") adjusted = "B";
+
+  // 距離を置きたい + 重要度低い → ランク上限を制限
+  if (goal === "距離を置きたい" && ep <= 2) {
+    if (adjusted === "S" || adjusted === "A") adjusted = "B";
+  }
+
+  // 本命誤解リスク: 恋愛対象でない相手に本命と思われる → 1段階ダウン
+  if (giriAwareness === "本命と受け取られる可能性あり"
+      && relationship !== "気になる人" && relationship !== "パートナー") {
+    if (adjusted === "S") adjusted = "A";
+    else if (adjusted === "A") adjusted = "B";
+    else if (adjusted === "B") adjusted = "C";
+  }
+
+  return adjusted;
+}
+
+function determineSuccessType(
+  bt: BenefitType, roi: number, intimacy: number, ep: EmotionalPriority,
+  giftFit: number, goal: RelationshipGoal,
+): SuccessType {
+  if (goal === "距離を置きたい" && ep <= 2) return "損切り推奨";
+  if (bt === "有形" && roi >= 60 && ep >= 4) return "完全成功";
+  if (bt === "有形" && roi >= 50) return "投資型";
+  if (bt === "無形" && ep >= 4) return "感情型";
+  if (bt === "無形" && intimacy >= 50) return "関係構築型";
+  if (ep >= 4) return "感情型";
+  return "要検討";
 }
 
 function buildRankReason(rank: Rank, scores: ScoreBreakdown, t: TargetInput): string {
@@ -183,14 +223,15 @@ function buildRankReason(rank: Rank, scores: ScoreBreakdown, t: TargetInput): st
     else if (scores.roi <= 30) parts.push("ROI実績が低い");
     if (scores.intimacy >= 70) parts.push("相手からの好意的行動が多い");
   } else {
-    if (scores.affinity >= 70) parts.push("ギフト戦略の効果が高い見込み");
-    else if (scores.affinity <= 30) parts.push("ギフト最適化の手がかりが不足");
+    if (scores.giftFit >= 70) parts.push("ギフト戦略の効果が高い見込み");
+    else if (scores.giftFit <= 30) parts.push("ギフト最適化の手がかりが不足");
     if (scores.intimacy >= 70) parts.push("深い関係性を活かせる");
   }
 
   if (t.recipientActions.length >= 4) parts.push("相手の好意的行動が多い");
   else if (t.recipientActions.length === 0) parts.push("相手の行動データが不足");
   if (t.returnTendency === "律儀に返す") parts.push("お返し期待度が高い");
+  if (t.emotionalPriority >= 4) parts.push("感情的に重要な人物");
   if (t.relationshipGoal === "距離を置きたい") parts.push("距離を置きたい意向");
   if (parts.length === 0) parts.push("バランス型");
 
@@ -203,70 +244,72 @@ function buildRankReason(rank: Rank, scores: ScoreBreakdown, t: TargetInput): st
   return `${prefix[rank]}: ${parts.slice(0, 3).join("、")}`;
 }
 
+function buildRiskWarning(t: TargetInput): string {
+  const warnings: string[] = [];
+
+  if (t.giriAwareness === "本命と受け取られる可能性あり") {
+    warnings.push("義理のつもりでも本命と誤解されるリスクがあります。渡し方やメッセージに注意してください。");
+  }
+  if (t.relationshipGoal === "距離を置きたい") {
+    warnings.push("距離を置きたい相手にギフトを渡す必要があるか、再検討をお勧めします。");
+  }
+  if (t.emotionalPriority <= 2 && t.budget >= 3000) {
+    warnings.push("感情的重要度が低い相手への高額投資です。コスト対効果を再考してみてください。");
+  }
+
+  return warnings.join(" ");
+}
+
 // ═══════════════════════════════════════════════
 //  最大化に近づくための質問生成
-//  = 対象者について「何を深掘りすれば」分析精度・実利益が上がるか
 // ═══════════════════════════════════════════════
 function generateQuestions(t: TargetInput, scores: ScoreBreakdown): string[] {
   const qs: string[] = [];
 
-  // ── 行動指標の欠損（最優先で問う） ──
   if (t.recipientActions.length === 0) {
     qs.push("相手があなたに対してどんな行動をとっているか振り返ってみてください。連絡が来る、相談される、誘われるなどの事実があると親密度の精度が大幅に上がります。");
   } else if (t.recipientActions.length <= 2) {
     qs.push("行動指標がまだ少なめです。「信頼」「優先度」「興味」のカテゴリでも当てはまるものがないか確認してみてください。");
   }
 
-  // ── 性格の欠損 ──
+  if (t.recentEpisodes.length <= 10) {
+    qs.push("最近この人との具体的なエピソードを書いてみてください。「相談された」「一緒にランチした」など、些細なことでも親密度の精度が上がります。");
+  }
+
   if (t.personality.length === 0) {
     qs.push("この人はどんな性格ですか？（几帳面・おおらか・こだわり強い・社交的 etc.）性格がわかるとギフト戦略が大きく変わります。");
   }
 
-  // ── 好みタグの欠損 ──
   if (t.preferences.length === 0) {
     qs.push("この人の好きな食べ物・飲み物・趣味を調べてみてください。好みタグが増えるとギフト提案の精度が大きく上がります。");
   } else if (t.preferences.length <= 3) {
     qs.push("好みの情報がまだ少なめです。味覚・ライフスタイル・価値観のカテゴリで深掘りできると分析精度が上がります。");
   }
 
-  // ── 最近の関心事の欠損 ──
   if (t.recentInterests.length === 0) {
     qs.push("この人が最近ハマっていること、欲しがっていたもの、話題にしていたことを探ってみてください。ギフト提案の個別化に直結します。");
   }
 
-  // ── ギフト反応の欠損 ──
   if (t.giftReaction === "不明") {
     qs.push("この人がプレゼントをもらったとき、どんな反応をするタイプですか？（素直に喜ぶ/控えめ/恐縮する）渡し方やストーリーの調整に使えます。");
   }
 
   if (t.benefitType === "有形") {
-    // ── お返し傾向の欠損 ──
     if (t.returnTendency === "不明") {
       qs.push("この人は義理チョコにお返しするタイプですか？周囲にそれとなく聞いてみてください。ROI予測の精度が大幅に上がります。");
     }
-
     if (t.gaveLastYear && t.receivedReturn && (t.returnValue === null || t.returnValue === 0)) {
       qs.push("去年のお返しの金額を思い出せますか？具体的な金額がわかるとROI予測が正確になります。");
     }
-
     if (t.gaveLastYear && !t.receivedReturn) {
       qs.push("去年お返しがなかった理由を探ってみてください。「忘れていただけ」なら回収の可能性あり、「不要と思われた」なら撤退の材料になります。");
-    }
-
-    if (!t.gaveLastYear && !t.gaveYearBefore && t.returnTendency === "不明") {
-      qs.push("この人が過去にバレンタインのお返しをしているか、周囲に聞いてみてください。お返し傾向がわかるとROI予測が可能になります。");
     }
   } else {
     if (t.relationshipGoal === "深めたい" && t.recentInterests.length === 0) {
       qs.push("関係を深めたいなら、この人が最近喜んでいたこと・感動していたことを探ってみてください。ストーリーに織り込めます。");
     }
-
     if (t.relationship === "気になる人" && t.preferences.length < 5) {
       qs.push("この人が普段どんなものを身につけている・使っているか観察してみてください。ブランドの好みやこだわりがわかるとギフト精度が上がります。");
-    }
-
-    if (t.relationship === "パートナー" && t.recentInterests.length === 0) {
-      qs.push("最近この人が「欲しい」「気になる」と言っていたものはありますか？直近の欲求に合わせたギフトは満足度が跳ね上がります。");
     }
   }
 
@@ -307,7 +350,6 @@ function suggestGift(t: TargetInput, scores: ScoreBreakdown): GiftSuggestion {
     else                                     { item = "ブラックサンダー 義理チョコパック"; price = Math.min(b, 300); reason = "義理チョコの王道"; }
   }
 
-  // サプライズ好きなら特別感をプラス
   if (prefs.includes("サプライズ好き")) {
     reason += "（サプライズ演出を添えると効果倍増）";
   }
@@ -324,7 +366,6 @@ function buildStory(t: TargetInput, giftItem: string): string {
   const rel = t.relationship;
   const reaction = t.giftReaction;
 
-  // ギフト反応に合わせてトーン調整
   let closingHint = "";
   if (reaction === "恐縮するタイプ") {
     closingHint = "\n※ 恐縮させないよう、さりげなく渡すのがベスト。「みんなに配ってるよ」と添えると安心。";
@@ -332,12 +373,10 @@ function buildStory(t: TargetInput, giftItem: string): string {
     closingHint = "\n※ 控えめな人なので、軽いトーンで渡すと受け取りやすい。";
   }
 
-  // 最近の関心事があればストーリーに織り込む
   const interestHook = t.recentInterests.length > 5
     ? `\n「${t.recentInterests.slice(0, 40)}」に最近ハマっていると聞いて、この人のことをもっと知りたいと思った——`
     : "";
 
-  // エピソードがあればストーリーに織り込む
   const episodeHook = t.recentEpisodes.length > 10
     ? `\n最近のこと——${t.recentEpisodes.slice(0, 60)}——を思い出すと、この人との距離感がわかる。`
     : "";
@@ -394,14 +433,24 @@ function generateMessage(t: TargetInput): string {
 export function analyzeTarget(input: TargetInput): AnalysisOutput {
   const intimacy = calcIntimacy(input);
   const roi = calcRoi(input);
-  const affinity = calcAffinity(input);
-  const total = calcTotal(intimacy, roi, affinity, input.benefitType);
-  const rank = determineRank(total);
-  const scores: ScoreBreakdown = { intimacy, roi, affinity, total };
+  const giftFit = calcGiftFit(input);
+  const total = calcTotal(intimacy, roi, giftFit, input.benefitType);
+
+  const rawRank = determineRank(total);
+  const rank = applyRankAdjustments(
+    rawRank, input.emotionalPriority, input.relationshipGoal,
+    input.giriAwareness, input.relationship,
+  );
+
+  const scores: ScoreBreakdown = { intimacy, roi, giftFit, total };
+  const successType = determineSuccessType(
+    input.benefitType, roi, intimacy, input.emotionalPriority, giftFit, input.relationshipGoal,
+  );
 
   const gift = suggestGift(input, scores);
   const message = generateMessage(input);
   const questions = generateQuestions(input, scores);
+  const riskWarning = buildRiskWarning(input);
 
   const returnProb = input.receivedReturn
     ? Math.min(0.95, 0.5 + roi * 0.004)
@@ -414,6 +463,7 @@ export function analyzeTarget(input: TargetInput): AnalysisOutput {
     scores,
     rank,
     rankReason: buildRankReason(rank, scores, input),
+    successType,
     giftSuggestion: gift,
     message,
     roiPrediction: {
@@ -421,7 +471,7 @@ export function analyzeTarget(input: TargetInput): AnalysisOutput {
       expectedMultiplier: Math.round(expectedMult * 10) / 10,
     },
     questions,
-    allocatedBudget: input.budget,
+    riskWarning,
   };
 }
 

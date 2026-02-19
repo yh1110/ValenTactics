@@ -7,7 +7,8 @@ import { Heart, ArrowLeft, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TargetForm } from "@/components/target-form";
-import type { TargetFormValues } from "@/lib/schema";
+import type { TargetFormValues } from "@/schema";
+import { updateTargetAndAnalyze } from "@/actions/target";
 
 export default function EditTargetPage() {
   const params = useParams();
@@ -58,18 +59,8 @@ export default function EditTargetPage() {
   }, [id]);
 
   async function handleSubmit(values: TargetFormValues) {
-    const res = await fetch(`/api/targets/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    if (!res.ok) throw new Error("更新に失敗しました");
-
-    const analyzeRes = await fetch(`/api/targets/${id}/analyze`, {
-      method: "POST",
-    });
-    if (!analyzeRes.ok) throw new Error("再分析に失敗しました");
-
+    const result = await updateTargetAndAnalyze(id, values);
+    if (!result.success) throw new Error(result.error);
     router.push(`/targets/${id}`);
   }
 

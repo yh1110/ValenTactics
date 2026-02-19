@@ -71,11 +71,13 @@ model AnalysisResult {
 
   scoreIntimacy Int
   scoreRoi      Int
-  scoreAffinity Int
+  scoreGiftFit  Int
   scoreTotal    Int
 
-  rank       String
-  rankReason String
+  rank        String
+  rankReason  String
+  successType String @default("関係構築型")
+  riskWarning String @default("")
 
   giftItem   String
   giftPrice  Int

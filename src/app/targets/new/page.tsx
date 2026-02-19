@@ -6,7 +6,8 @@ import { Heart, ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TargetForm } from "@/components/target-form";
-import type { TargetFormValues } from "@/lib/schema";
+import type { TargetFormValues } from "@/schema";
+import { createTargetAndAnalyze } from "@/actions/target";
 
 const DEFAULT_VALUES: TargetFormValues = {
   name: "",
@@ -37,20 +38,9 @@ export default function NewTargetPage() {
   const router = useRouter();
 
   async function handleSubmit(values: TargetFormValues) {
-    const res = await fetch("/api/targets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    if (!res.ok) throw new Error("保存に失敗しました");
-    const target = await res.json();
-
-    const analyzeRes = await fetch(`/api/targets/${target.id}/analyze`, {
-      method: "POST",
-    });
-    if (!analyzeRes.ok) throw new Error("分析に失敗しました");
-
-    router.push(`/targets/${target.id}`);
+    const result = await createTargetAndAnalyze(values);
+    if (!result.success) throw new Error(result.error);
+    router.push(`/targets/${result.data.id}`);
   }
 
   return (
