@@ -34,6 +34,8 @@ export default function EditTargetPage() {
           preferences: t.preferences ?? [],
           recentInterests: t.recentInterests ?? "",
           giftReaction: t.giftReaction ?? "不明",
+          recipientActions: t.recipientActions ?? [],
+          recentEpisodes: t.recentEpisodes ?? "",
           relationshipGoal: t.relationshipGoal,
           emotionalPriority: t.emotionalPriority,
           giriAwareness: t.giriAwareness,

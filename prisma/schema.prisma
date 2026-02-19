@@ -39,6 +39,10 @@ model Target {
   recentInterests String   @default("")
   giftReaction    String   @default("不明")
 
+  // Step 2.5: 相手の行動（客観的親密度）
+  recipientActions String[] @default([])
+  recentEpisodes   String   @default("")
+
   // Step 3: 関係性 & 過去データ
   relationshipGoal  String @default("現状維持")
   emotionalPriority Int    @default(3)

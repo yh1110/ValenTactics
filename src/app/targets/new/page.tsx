@@ -18,6 +18,8 @@ const DEFAULT_VALUES: TargetFormValues = {
   preferences: [],
   recentInterests: "",
   giftReaction: "不明",
+  recipientActions: [],
+  recentEpisodes: "",
   relationshipGoal: "現状維持",
   emotionalPriority: 3,
   giriAwareness: "不明",

@@ -77,6 +77,41 @@ export interface PreferenceCategory {
   items: Preference[];
 }
 
+// ── 相手の行動指標（客観的親密度）──
+
+export type RecipientAction =
+  | "相手から連絡が来る"
+  | "プライベートな話題を振られる"
+  | "食事や飲みに誘われた"
+  | "仕事やプライベートの相談をされる"
+  | "誕生日やイベントを覚えてくれる"
+  | "2人きりの時間を作ってくれる"
+  | "自分の変化に気づいてくれる"
+  | "過去の会話内容を覚えている"
+  | "弱みや愚痴を見せてくれる";
+
+export interface RecipientActionCategory {
+  label: string;
+  items: RecipientAction[];
+}
+
+export const RECIPIENT_ACTION_CATEGORIES: RecipientActionCategory[] = [
+  {
+    label: "コミュニケーション",
+    items: ["相手から連絡が来る", "プライベートな話題を振られる", "食事や飲みに誘われた"],
+  },
+  {
+    label: "信頼・特別扱い",
+    items: ["仕事やプライベートの相談をされる", "誕生日やイベントを覚えてくれる", "2人きりの時間を作ってくれる"],
+  },
+  {
+    label: "興味・自己開示",
+    items: ["自分の変化に気づいてくれる", "過去の会話内容を覚えている", "弱みや愚痴を見せてくれる"],
+  },
+];
+
+export const ALL_RECIPIENT_ACTIONS: RecipientAction[] = RECIPIENT_ACTION_CATEGORIES.flatMap((c) => c.items);
+
 // ── スコア・分析結果 ──
 
 export interface ScoreBreakdown {

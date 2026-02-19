@@ -46,6 +46,8 @@ export async function POST(request: Request) {
       preferences: data.preferences,
       recentInterests: data.recentInterests,
       giftReaction: data.giftReaction,
+      recipientActions: data.recipientActions,
+      recentEpisodes: data.recentEpisodes,
       relationshipGoal: data.relationshipGoal,
       emotionalPriority: data.emotionalPriority,
       giriAwareness: data.giriAwareness,

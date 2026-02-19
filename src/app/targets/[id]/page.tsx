@@ -58,6 +58,8 @@ interface TargetData {
   preferences: string[];
   recentInterests: string;
   giftReaction: string;
+  recipientActions: string[];
+  recentEpisodes: string;
   relationshipGoal: string;
   emotionalPriority: number;
   giriAwareness: string;
@@ -417,6 +419,27 @@ export default function TargetDetailPage() {
                       </div>
                     )}
                   </div>
+
+                  {target.recipientActions.length > 0 && (
+                    <>
+                      <Separator />
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">相手の行動（客観的指標）</p>
+                      <div className="flex flex-wrap gap-1">
+                        {target.recipientActions.map((a) => (
+                          <Badge key={a} variant="secondary" className="text-xs">{a}</Badge>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {target.recentEpisodes && (
+                    <>
+                      <div>
+                        <p className="text-muted-foreground">最近のエピソード</p>
+                        <p className="font-medium whitespace-pre-line">{target.recentEpisodes}</p>
+                      </div>
+                    </>
+                  )}
 
                   <Separator />
 

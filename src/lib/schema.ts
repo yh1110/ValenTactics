@@ -9,6 +9,7 @@ import {
   GIFT_REACTIONS,
   RELATIONSHIP_GOALS,
   GIRI_AWARENESS_OPTIONS,
+  ALL_RECIPIENT_ACTIONS,
 } from "./types";
 
 // Step 1: 基本情報 + 目的
@@ -47,6 +48,10 @@ export const step2Schema = z.object({
 
 // Step 3: 関係性 & 過去データ
 export const step3Schema = z.object({
+  recipientActions: z.array(
+    z.enum(ALL_RECIPIENT_ACTIONS as unknown as [string, ...string[]])
+  ),
+  recentEpisodes: z.string().max(400, "400文字以内で入力してください"),
   relationshipGoal: z.enum(
     RELATIONSHIP_GOALS as unknown as [string, ...string[]],
     { message: "関係性の目標を選択してください" }

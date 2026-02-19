@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ import {
   PREFERENCE_CATEGORIES,
   RETURN_TENDENCIES,
   GIFT_REACTIONS,
+  RECIPIENT_ACTION_CATEGORIES,
 } from "@/lib/types";
 import {
   step1Schema,
@@ -393,6 +395,64 @@ export function TargetForm({ defaultValues, onSubmit, mode }: TargetFormProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
+                {/* 相手の行動チェックリスト */}
+                <FormField control={form.control} name="recipientActions" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>相手の行動（当てはまるものを選択）</FormLabel>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      相手があなたに対してとっている行動を選ぶと、客観的な親密度が測れます
+                    </p>
+                    <div className="space-y-4">
+                      {RECIPIENT_ACTION_CATEGORIES.map((cat) => (
+                        <div key={cat.label}>
+                          <p className="text-xs font-semibold text-muted-foreground mb-2">{cat.label}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {cat.items.map((action) => {
+                              const selected = field.value.includes(action);
+                              return (
+                                <Badge
+                                  key={action}
+                                  variant={selected ? "default" : "outline"}
+                                  className="cursor-pointer select-none transition-colors"
+                                  onClick={() => {
+                                    const next = selected
+                                      ? field.value.filter((v: string) => v !== action)
+                                      : [...field.value, action];
+                                    field.onChange(next);
+                                  }}
+                                >
+                                  {action}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                {/* エピソード記述欄 */}
+                <FormField control={form.control} name="recentEpisodes" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>最近のエピソード</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="例: 先週相談に乗ってもらった、去年の誕生日にメッセージをくれた、2人で飲みに行った"
+                        rows={3}
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      チェックリストに収まらない具体的なエピソードがあれば記入してください
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <Separator />
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}

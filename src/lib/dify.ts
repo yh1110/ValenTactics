@@ -6,6 +6,8 @@ interface DifyWorkflowInput {
   preferences: string;
   recent_interests: string;
   gift_reaction: string;
+  recipient_actions: string;
+  recent_episodes: string;
   relationship_goal: string;
   emotional_priority: string;
   giri_awareness: string;
@@ -51,6 +53,8 @@ export function buildDifyInputs(target: {
   preferences: string[];
   recentInterests: string;
   giftReaction: string;
+  recipientActions: string[];
+  recentEpisodes: string;
   relationshipGoal: string;
   emotionalPriority: number;
   giriAwareness: string;
@@ -71,6 +75,8 @@ export function buildDifyInputs(target: {
     preferences: target.preferences.join(", "),
     recent_interests: target.recentInterests,
     gift_reaction: target.giftReaction,
+    recipient_actions: target.recipientActions.join(", "),
+    recent_episodes: target.recentEpisodes,
     relationship_goal: target.relationshipGoal,
     emotional_priority: String(target.emotionalPriority),
     giri_awareness: target.giriAwareness,

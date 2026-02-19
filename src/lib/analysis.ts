@@ -11,6 +11,7 @@ import type {
   Personality,
   ReturnTendency,
   GiftReaction,
+  RecipientAction,
 } from "./types";
 
 export interface TargetInput {
@@ -23,6 +24,10 @@ export interface TargetInput {
   preferences: Preference[];
   recentInterests: string;
   giftReaction: GiftReaction;
+
+  // 相手の行動（客観的親密度）
+  recipientActions: RecipientAction[];
+  recentEpisodes: string;
 
   // 関係性 & 過去データ
   relationshipGoal: RelationshipGoal;
@@ -52,40 +57,36 @@ export interface AnalysisOutput {
 
 // ═══════════════════════════════════════════════
 //  共通軸: 親密度 (0〜100)
-//  相手をどれだけ理解しているか + 関係性の深さ
+//  「相手の行動（客観的事実）」のみで測る
+//  ※ 関係性ラベル・目標・重要度・性格・好みは一切影響しない
 // ═══════════════════════════════════════════════
+
+const ACTION_WEIGHTS: Record<RecipientAction, number> = {
+  "相手から連絡が来る": 7,
+  "プライベートな話題を振られる": 8,
+  "食事や飲みに誘われた": 10,
+  "仕事やプライベートの相談をされる": 10,
+  "誕生日やイベントを覚えてくれる": 9,
+  "2人きりの時間を作ってくれる": 12,
+  "自分の変化に気づいてくれる": 8,
+  "過去の会話内容を覚えている": 7,
+  "弱みや愚痴を見せてくれる": 10,
+};
+
 function calcIntimacy(t: TargetInput): number {
-  const relBase: Record<Relationship, number> = {
-    パートナー: 85,
-    "気になる人": 60,
-    友人: 50,
-    上司: 45,
-    同僚: 35,
-    その他: 25,
-  };
-  let score = relBase[t.relationship];
+  let score = 5;
 
-  const goalMod: Record<RelationshipGoal, number> = {
-    深めたい: 10,
-    現状維持: 0,
-    礼儀として: -10,
-    距離を置きたい: -25,
-  };
-  score += goalMod[t.relationshipGoal];
+  // ── 行動指標のみで親密度を測る ──
+  for (const action of t.recipientActions) {
+    score += ACTION_WEIGHTS[action];
+  }
 
-  score += (t.emotionalPriority - 3) * 4;
+  // Dify LLM ではエピソードの内容を評価して 0〜20pt を加算する。
+  // ローカルフォールバックでは内容評価不可のため、存在有無のみで控えめに加点。
+  if (t.recentEpisodes.length > 10) score += 5;
 
-  // 相手の性格を把握しているほど親密度UP
-  score += Math.min(t.personality.length * 4, 16);
-
-  // 相手の好みを多く知っている
-  score += Math.min(t.preferences.length * 2, 12);
-
-  // 最近の関心事を把握している
-  if (t.recentInterests.length > 5) score += 6;
-
-  // 過去の双方向やりとり
-  if (t.gaveLastYear && t.receivedReturn) score += 4;
+  // 過去の双方向やりとり（相手が返してきた = 相手側の行動事実）
+  if (t.gaveLastYear && t.receivedReturn) score += 3;
   if (t.gaveYearBefore && t.receivedReturnYearBefore) score += 2;
 
   return clamp(score, 0, 100);
@@ -130,36 +131,29 @@ function calcRoi(t: TargetInput): number {
 
 // ═══════════════════════════════════════════════
 //  無形軸: 好感度 / アフィニティ (0〜100)
-//  相手の好み・関心・性格の把握度が主軸
+//  ローカルフォールバック: 客観的シグナルのみで簡易推定
+//  ※ 性格・好み・関心事・ギフト反応はスコアに影響しない
+//    （suggestGift / buildStory でのみ使用）
+//  Dify LLM では性質を含む全データを包括的に評価する
 // ═══════════════════════════════════════════════
 function calcAffinity(t: TargetInput): number {
-  let score = 20;
+  let score = 15;
 
-  // 好みタグ（拡充版: 最大19タグ）
-  score += Math.min(t.preferences.length * 5, 25);
+  // ── 行動指標: 相手が好意的ならギフトの効果も高い ──
+  const actionCount = t.recipientActions.length;
+  if (actionCount >= 6) score += 35;
+  else if (actionCount >= 4) score += 25;
+  else if (actionCount >= 2) score += 15;
+  else if (actionCount >= 1) score += 8;
 
-  // 相手の性格を把握
-  score += Math.min(t.personality.length * 3, 12);
+  // ── エピソード: 具体的なやりとりがある = 戦略の手がかりがある ──
+  if (t.recentEpisodes.length > 30) score += 20;
+  else if (t.recentEpisodes.length > 10) score += 12;
 
-  // 最近の関心事
-  if (t.recentInterests.length > 5) score += 12;
-
-  // ギフト受け取り反応を把握している (不明以外)
-  if (t.giftReaction !== "不明") score += 6;
-
-  // 関係目標
-  if (t.relationshipGoal === "深めたい") score += 10;
-  else if (t.relationshipGoal === "現状維持") score += 5;
-  else if (t.relationshipGoal === "距離を置きたい") score -= 10;
-
-  score += (t.emotionalPriority - 3) * 4;
-
-  // 過去やりとり
-  if (t.receivedReturn) score += 3;
-  if (t.gaveLastYear) score += 2;
-
-  // メモ
-  if (t.memo.length > 10) score += 5;
+  // ── 過去のギフト交換実績: 成功体験がある = 再現可能性が高い ──
+  if (t.gaveLastYear && t.receivedReturn) score += 15;
+  else if (t.gaveLastYear) score += 5;
+  if (t.gaveYearBefore && t.receivedReturnYearBefore) score += 8;
 
   return clamp(score, 0, 100);
 }
@@ -187,15 +181,16 @@ function buildRankReason(rank: Rank, scores: ScoreBreakdown, t: TargetInput): st
   if (t.benefitType === "有形") {
     if (scores.roi >= 70) parts.push("ROI実績が高い");
     else if (scores.roi <= 30) parts.push("ROI実績が低い");
-    if (scores.intimacy >= 70) parts.push("相手をよく把握している");
+    if (scores.intimacy >= 70) parts.push("相手からの好意的行動が多い");
   } else {
-    if (scores.affinity >= 70) parts.push("相手情報が充実");
-    else if (scores.affinity <= 30) parts.push("相手の情報が不足");
+    if (scores.affinity >= 70) parts.push("ギフト戦略の効果が高い見込み");
+    else if (scores.affinity <= 30) parts.push("ギフト最適化の手がかりが不足");
     if (scores.intimacy >= 70) parts.push("深い関係性を活かせる");
   }
 
+  if (t.recipientActions.length >= 4) parts.push("相手の好意的行動が多い");
+  else if (t.recipientActions.length === 0) parts.push("相手の行動データが不足");
   if (t.returnTendency === "律儀に返す") parts.push("お返し期待度が高い");
-  if (t.personality.length >= 3) parts.push("性格をよく把握");
   if (t.relationshipGoal === "距離を置きたい") parts.push("距離を置きたい意向");
   if (parts.length === 0) parts.push("バランス型");
 
@@ -214,6 +209,13 @@ function buildRankReason(rank: Rank, scores: ScoreBreakdown, t: TargetInput): st
 // ═══════════════════════════════════════════════
 function generateQuestions(t: TargetInput, scores: ScoreBreakdown): string[] {
   const qs: string[] = [];
+
+  // ── 行動指標の欠損（最優先で問う） ──
+  if (t.recipientActions.length === 0) {
+    qs.push("相手があなたに対してどんな行動をとっているか振り返ってみてください。連絡が来る、相談される、誘われるなどの事実があると親密度の精度が大幅に上がります。");
+  } else if (t.recipientActions.length <= 2) {
+    qs.push("行動指標がまだ少なめです。「信頼」「優先度」「興味」のカテゴリでも当てはまるものがないか確認してみてください。");
+  }
 
   // ── 性格の欠損 ──
   if (t.personality.length === 0) {
@@ -335,30 +337,35 @@ function buildStory(t: TargetInput, giftItem: string): string {
     ? `\n「${t.recentInterests.slice(0, 40)}」に最近ハマっていると聞いて、この人のことをもっと知りたいと思った——`
     : "";
 
+  // エピソードがあればストーリーに織り込む
+  const episodeHook = t.recentEpisodes.length > 10
+    ? `\n最近のこと——${t.recentEpisodes.slice(0, 60)}——を思い出すと、この人との距離感がわかる。`
+    : "";
+
   if (rel === "パートナー") {
-    return `「${giftItem}」を選んだのは、${name}がいつも頑張っている姿を見ているから。${interestHook}`
+    return `「${giftItem}」を選んだのは、${name}がいつも頑張っている姿を見ているから。${interestHook}${episodeHook}`
       + `\n特別な日じゃなくても感謝を伝えたい——そんな気持ちを、この一箱に込めて。`
       + `\n二人でゆっくり味わう時間が、いちばんのプレゼントになるはず。${closingHint}`;
   }
   if (rel === "気になる人") {
-    return `ふと${name}のことを思い出したとき、「${giftItem}」が目に留まった。${interestHook}`
+    return `ふと${name}のことを思い出したとき、「${giftItem}」が目に留まった。${interestHook}${episodeHook}`
       + `\n"これ、絶対好きそう"——そう思えるのは、ちゃんと見ているから。`
       + `\n大げさじゃなく、でも気持ちが伝わるように。そんな距離感で渡してみて。${closingHint}`;
   }
   if (rel === "上司") {
-    return `日頃の感謝を形にしたくて「${giftItem}」を選びました。${interestHook}`
+    return `日頃の感謝を形にしたくて「${giftItem}」を選びました。${interestHook}${episodeHook}`
       + `\n${name}のデスクで一息つくとき、ふっと笑顔になってもらえたら嬉しい。`
       + `\nさりげなく渡すのがポイント。"いつもありがとうございます"の一言を添えて。${closingHint}`;
   }
   if (rel === "友人") {
-    return `${name}とは気を遣わない仲だけど、だからこそ「${giftItem}」で少しだけ驚かせたい。${interestHook}`
+    return `${name}とは気を遣わない仲だけど、だからこそ「${giftItem}」で少しだけ驚かせたい。${interestHook}${episodeHook}`
       + `\n"え、わざわざ？" "いや、なんとなく" ——このゆるい温度感が、友達のいいところ。${closingHint}`;
   }
   if (rel === "同僚") {
-    return `毎日一緒に働く${name}に、「${giftItem}」でささやかな感謝を。${interestHook}`
+    return `毎日一緒に働く${name}に、「${giftItem}」でささやかな感謝を。${interestHook}${episodeHook}`
       + `\n忙しい午後のブレイクタイムに"お疲れさま"と一緒に渡すと、チームの空気がちょっと和むかも。${closingHint}`;
   }
-  return `${name}への「${giftItem}」。ほんの気持ちだけど、受け取ったときの表情を想像して選んだ一品。${interestHook}${closingHint}`;
+  return `${name}への「${giftItem}」。ほんの気持ちだけど、受け取ったときの表情を想像して選んだ一品。${interestHook}${episodeHook}${closingHint}`;
 }
 
 // ═══════════════════════════════════════════════
