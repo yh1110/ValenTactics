@@ -47,7 +47,10 @@ export default function TargetsListPage() {
 
   useEffect(() => {
     fetch("/api/targets")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return [];
+        return r.json();
+      })
       .then(setTargets)
       .finally(() => setLoading(false));
   }, []);
